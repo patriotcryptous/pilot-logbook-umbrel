@@ -1,0 +1,2 @@
+{% macro badge(exp) %}{% if exp.state != "none" %}<span class="badge {{ exp.state }}">{{ exp.text }}</span>{% endif %}{% endmacro %}
+{% macro catchip(doc) %}<span class="chip cat-{{ doc.category }}">{{ doc.cat_label }}</span>{% endmacro %}

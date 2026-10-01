@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_hangar_macros.html" import badge, catchip %}
+{% block title %}Document Hangar{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>Document Hangar</h1>
+    <p class="sub">Insurance, certificates, manuals, notes, photos and videos, stored privately on your own server. {{ info.count }} item{{ "s" if info.count != 1 }}, {{ info.size }}.</p></div>
+  <div class="actions"><a class="btn" href="/hangar/note/new">{{ icon("file") }}New note</a><a class="btn primary" href="/hangar/add">{{ icon("upload") }}Add documents</a></div>
+</header>
+{% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
+{% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+
+{% if attn %}
+<section class="panel attention" aria-label="Needs attention">
+  <h2>{{ attn|length }} document{{ "s" if attn|length != 1 }} expired or expiring soon</h2>
+  <ul class="statuslist">
+    {% for d in attn[:5] %}<li><a href="/hangar/{{ d.id }}">{{ d.title }}</a>{{ badge(d.exp) }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if info.count == 0 %}
+<div class="panel empty">
+  <h2>Your Hangar is empty</h2>
+  <p>Keep your insurance policy, pilot certificate, medical, POH, registration, maintenance records, notes, photos and videos in one place that you control. Add an expiry date and the dashboard will warn you before it lapses.</p>
+  <div class="actions center"><a class="btn primary" href="/hangar/add">{{ icon("upload") }}Add documents</a><a class="btn" href="/hangar/note/new">Write a note</a></div>
+</div>
+{% else %}
+<nav class="catbar" aria-label="Categories">
+  <a href="/hangar{% if q or aircraft %}?q={{ q|urlencode }}&amp;aircraft={{ aircraft|urlencode }}{% endif %}"{% if not cat %} aria-current="true"{% endif %}>All <span>{{ info.count }}</span></a>
+  {% for key, label in cats %}
+  <a href="/hangar?cat={{ key }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}{% if aircraft %}&amp;aircraft={{ aircraft|urlencode }}{% endif %}"{% if cat == key %} aria-current="true"{% endif %}{% if not counts[key] and cat != key %} class="zero"{% endif %}>{{ label }} <span>{{ counts[key] }}</span></a>
+  {% endfor %}
+</nav>
+
+<form class="toolbar" method="get" action="/hangar">
+  {% if cat %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
+  <label class="grow">Search titles, notes and file names<input type="search" name="q" value="{{ q }}" placeholder="policy, POH, medical"></label>
+  <label>Aircraft<select name="aircraft"><option value="">All</option>{% for t in tails %}<option{% if t == aircraft %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+  <label>Sort<select name="sort"><option value="new"{% if sort == "new" %} selected{% endif %}>Newest</option><option value="name"{% if sort == "name" %} selected{% endif %}>Name</option><option value="expiry"{% if sort == "expiry" %} selected{% endif %}>Expiring soonest</option></select></label>
+  <button class="btn" type="submit">Apply</button>
+  {% if filtered %}<a class="btn" href="/hangar">Clear</a>{% endif %}
+</form>
+
+{% if docs %}
+<div class="doc-grid">
+  {% for d in docs %}
+  <a class="doc" href="/hangar/{{ d.id }}">
+    <div class="thumb">
+      {% if d.has_thumb %}<img src="/hangar/{{ d.id }}/thumb" alt="" loading="lazy">
+      {% elif d.tkind == "video" %}<span class="tile">{{ icon("play") }}<span class="ext">{{ d.ext }}</span></span>
+      {% else %}<span class="tile"><span class="ext">{{ d.ext or "FILE" }}</span></span>{% endif %}
+    </div>
+    <div class="body">
+      <span class="title">{{ d.title }}</span>
+      <span class="meta">{{ catchip(d) }}{% if d.aircraft %}<span class="chip">{{ d.aircraft }}</span>{% endif %}</span>
+      <span class="meta">{% if d.kind == "file" %}{{ d.size_h }}{% else %}Note{% endif %} · {{ d.when|pretty_date }}</span>
+      {{ badge(d.exp) }}{% if not d.exists %}<span class="badge expired">File missing</span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a href="/hangar?cat={{ cat }}&amp;q={{ q|urlencode }}&amp;aircraft={{ aircraft|urlencode }}&amp;sort={{ sort }}&amp;page={{ page - 1 }}">Previous</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="/hangar?cat={{ cat }}&amp;q={{ q|urlencode }}&amp;aircraft={{ aircraft|urlencode }}&amp;sort={{ sort }}&amp;page={{ page + 1 }}">Next</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="panel empty"><p>Nothing matches that.</p><a class="btn" href="/hangar">Show everything</a></div>
+{% endif %}
+{% endif %}
+{% endblock %}

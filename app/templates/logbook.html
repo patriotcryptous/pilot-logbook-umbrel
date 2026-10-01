@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Logbook{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>Logbook</h1><p class="sub">{{ total_rows }} flight{{ "s" if total_rows != 1 }}{% if filtered %} match this filter{% endif %}</p></div>
+</header>
+
+<form class="toolbar" method="get" action="/logbook">
+  <label>Year<select name="year"><option value="">All</option>{% for y in years %}<option{% if y == year %} selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
+  <label>Aircraft<select name="aircraft"><option value="">All</option>{% for t in tails %}<option{% if t == aircraft %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+  <label class="grow">Search remarks, routes and instructors<input type="search" name="q" value="{{ q }}" placeholder="solo, crosswind, KMIE"></label>
+  <button class="btn" type="submit">Filter</button>
+  {% if filtered %}<a class="btn" href="/logbook">Clear</a>{% endif %}
+</form>
+
+{% if rows %}
+<div class="tablewrap" role="region" aria-label="Flights" tabindex="0">
+<table class="tbl">
+  <thead><tr>
+    <th>Date</th><th>Aircraft</th><th>Flight</th><th>Remarks</th>
+    <th class="n g">Total</th><th class="n">Dual</th><th class="n">PIC</th><th class="n">Solo</th><th class="n">X-C</th><th class="n">Night</th><th class="n">Instr.</th>
+    {% for k, h in extra %}<th class="n">{{ h }}</th>{% endfor %}
+    <th class="n g">Ldgs</th><th><span class="sr">Edit</span></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="date"><a href="/flights/{{ r.id }}/edit">{{ r.date|pretty_date }}</a></td>
+      <td class="tail">{{ r.aircraft }}</td>
+      <td><span class="route">{{ r|route }}</span><div class="chips">{% for cls, txt in r|tags %}<span class="chip {{ cls }}">{{ txt }}</span>{% endfor %}</div></td>
+      <td class="remarks"><span>{{ r.comments or "" }}</span></td>
+      <td class="n g"><b>{{ r.total|hb }}</b></td><td class="n">{{ r.dual_received|hb }}</td><td class="n">{{ r.pic|hb }}</td><td class="n">{{ r.solo|hb }}</td>
+      <td class="n">{{ r.xc|hb }}</td><td class="n">{{ r.night|hb }}</td><td class="n">{{ (r.actual_instr + r.sim_instr)|hb }}</td>
+      {% for k, h in extra %}<td class="n">{% if k == "holds" %}{{ r[k]|ib }}{% elif k == "distance" %}{{ "%.0f"|format(r[k]) if r[k] else "" }}{% else %}{{ r[k]|hb }}{% endif %}</td>{% endfor %}
+      <td class="n g">{{ r.all_landings|ib }}</td>
+      <td><a class="edit" href="/flights/{{ r.id }}/edit" aria-label="Edit flight on {{ r.date }}">{{ icon("edit") }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr>
+    <td colspan="4">{% if filtered %}Totals for this filter{% else %}Totals{% endif %}</td>
+    <td class="n g">{{ sums.total|hrs }}</td><td class="n">{{ sums.dual_received|hrs }}</td><td class="n">{{ sums.pic|hrs }}</td><td class="n">{{ sums.solo|hrs }}</td>
+    <td class="n">{{ sums.xc|hrs }}</td><td class="n">{{ sums.night|hrs }}</td><td class="n">{{ (sums.actual_instr + sums.sim_instr)|hrs }}</td>
+    {% for k, h in extra %}<td class="n">{% if k == "holds" %}{{ sums[k]|int }}{% elif k == "distance" %}{{ "%.0f"|format(sums[k]) }}{% else %}{{ sums[k]|hrs }}{% endif %}</td>{% endfor %}
+    <td class="n g">{{ sums.landings }}</td><td></td>
+  </tr></tfoot>
+</table>
+</div>
+
+<div class="cards" aria-label="Flights">
+  <div class="totals-card"><span>Total <b>{{ sums.total|hrs }}</b></span><span>Dual <b>{{ sums.dual_received|hrs }}</b></span><span>Solo <b>{{ sums.solo|hrs }}</b></span><span>Landings <b>{{ sums.landings }}</b></span></div>
+  {% for r in rows %}
+  <a class="card" href="/flights/{{ r.id }}/edit">
+    <div class="top"><span><b>{{ r.date|pretty_date }}</b> <span class="meta">{{ r.aircraft }}</span></span><span class="hrs">{{ r.total|hrs }}</span></div>
+    <div class="meta">{{ r|route }}</div>
+    <div class="chips">{% for cls, txt in r|tags %}<span class="chip {{ cls }}">{{ txt }}</span>{% endfor %}</div>
+    {% if r.comments %}<div class="rem">{{ r.comments }}</div>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a href="/logbook?year={{ year }}&amp;aircraft={{ aircraft }}&amp;q={{ q|urlencode }}&amp;page={{ page - 1 }}">Newer</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="/logbook?year={{ year }}&amp;aircraft={{ aircraft }}&amp;q={{ q|urlencode }}&amp;page={{ page + 1 }}">Older</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="panel empty">
+  {% if filtered %}<p>No flights match that filter.</p><a class="btn" href="/logbook">Show all flights</a>
+  {% else %}<h2>No flights yet</h2><p>Import your ForeFlight logbook or add a flight by hand.</p>
+  <div class="actions center"><a class="btn primary" href="/data">Import from ForeFlight</a><a class="btn" href="/flights/new">Add a flight</a></div>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

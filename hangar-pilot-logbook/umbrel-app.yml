@@ -1,0 +1,35 @@
+manifestVersion: 1
+id: hangar-pilot-logbook
+category: files
+name: Pilot Logbook
+version: "1.2.3"
+icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
+tagline: Your flight log and logbook backup, kept on your own server
+description: >-
+  A private, single-pilot logbook with a live dashboard, running entirely on your umbrelOS device.
+
+
+  Import your ForeFlight logbook as a CSV, add flights by hand, and keep photos of your paper logbook pages filed by date. See your totals, 90-day landing currency, flight review and medical reminders, and your progress toward private pilot minimums.
+
+
+  Keep your insurance, certificates, POH, notes, photos and videos in the Document Hangar, with reminders before anything expires.
+
+
+  Export your whole logbook back out as a ForeFlight-format CSV, a printable PDF with page totals, or a full backup zip. No accounts, no cloud, no telemetry: your logbook is a legal record, and it stays yours.
+
+
+  Currency and progress figures are reminders based on what you have logged. They are not a determination of legal currency or certificate eligibility.
+developer: patriotcryptous
+website: https://github.com/patriotcryptous/pilot-logbook-umbrel
+dependencies: []
+repo: https://github.com/patriotcryptous/pilot-logbook-umbrel
+support: https://github.com/patriotcryptous/pilot-logbook-umbrel/issues
+port: 8080
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: >-
+  New app icon: a black Cessna on safety orange.
+submitter: patriotcryptous
+submission: https://github.com/patriotcryptous/pilot-logbook-umbrel

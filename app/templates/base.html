@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"{% if theme in ("light", "dark") %} data-theme="{{ theme }}"{% endif %}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>{% block title %}Dashboard{% endblock %} - Pilot Logbook</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#0b1b2e">
+</head>
+<body>
+{% set mark %}<svg viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="58" fill="#F26A21"/><g transform="translate(128 128) scale(0.9) translate(-128 -125)"><g fill="#14100C" stroke="#14100C" stroke-width="6" stroke-linejoin="round">
+<path d="M128 99 L226 103 L238 111 L238 125 L226 132 L128 136 L30 132 L18 125 L18 111 L30 103 Z"/>
+<path d="M128 44 C139 44 145 55 145 73 L146 106 L146 138 C146 164 140 190 134 208 L128 214 L122 208 C116 190 110 164 110 138 L110 106 L111 73 C111 55 117 44 128 44 Z"/>
+<path d="M128 186 L170 189 L178 195 L178 201 L170 205 L128 208 L86 205 L78 201 L78 195 L86 189 Z"/></g>
+<rect x="98" y="35" width="60" height="8" rx="4" fill="#14100C"/></g></svg>{% endset %}
+<div class="shell">
+  <aside class="rail">
+    <a class="brand" href="/">{{ mark }}Pilot Logbook</a>
+    <a class="btn primary cta" href="/flights/new">{{ icon("plus") }}Add flight</a>
+    <nav aria-label="Main">
+      {% for key, href, label, ic in nav if key != "add" %}
+      <a href="{{ href }}"{% if active == key %} aria-current="page"{% endif %}>{{ icon(ic) }}{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="spacer"></div>
+    <div class="theme-label">Appearance</div>
+    <form class="theme" method="post" action="/theme">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ path }}">
+      <button name="theme" value="" aria-pressed="{{ 'true' if theme not in ('light', 'dark') else 'false' }}">Auto</button>
+      <button name="theme" value="light" aria-pressed="{{ 'true' if theme == 'light' else 'false' }}">Light</button>
+      <button name="theme" value="dark" aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">Dark</button>
+    </form>
+  </aside>
+  <div>
+    <header class="topbar"><a class="brand" href="/">{{ mark }}Pilot Logbook</a></header>
+    <main class="main">{% block content %}{% endblock %}</main>
+  </div>
+</div>
+<nav class="tabbar" aria-label="Main">
+  <a href="/"{% if active == "dash" %} aria-current="page"{% endif %}>{{ icon("grid") }}Dashboard</a>
+  <a href="/logbook"{% if active == "logbook" %} aria-current="page"{% endif %}>{{ icon("book") }}Logbook</a>
+  <a class="add" href="/flights/new"{% if active == "add" %} aria-current="page"{% endif %}>{{ icon("plus") }}Add</a>
+  <a href="/progress"{% if active == "progress" %} aria-current="page"{% endif %}>{{ icon("target") }}Progress</a>
+  <a href="/more"{% if active in ("more", "hangar", "scans", "data", "settings") %} aria-current="page"{% endif %}>{{ icon("more") }}More</a>
+</nav>
+</body>
+</html>

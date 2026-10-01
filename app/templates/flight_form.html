@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit flight" if editing else "Add flight" }}{% endblock %}
+{% macro control(fld, f) %}
+{% set k = fld.key %}{% set v = f.get(k, "") %}
+{% if k == "aircraft" %}
+<label class="field"><span>Aircraft</span><select name="aircraft"><option value="">Choose…</option>
+  {% for t in tails %}<option value="{{ t.ident }}"{% if t.ident == v %} selected{% endif %}>{{ t.ident }}{% if t.model %}, {{ t.model }}{% endif %}</option>{% endfor %}</select></label>
+{% elif fld.kind == "flag" %}
+<label class="flag"><input type="checkbox" name="{{ k }}" value="1"{% if v %} checked{% endif %}>{{ fld.label }}</label>
+{% elif k in ("comments", "instructor_comments") %}
+<label class="field span-all"><span>{{ fld.label }}</span><textarea name="{{ k }}" maxlength="500">{{ v }}</textarea></label>
+{% elif fld.kind == "date" %}
+<label class="field"><span>{{ fld.label }}</span><input type="date" name="{{ k }}" value="{{ v }}" required></label>
+{% else %}
+<label class="field{% if k == 'route' %} span-all{% endif %}"><span>{{ fld.label }}</span>
+  <input name="{{ k }}" value="{{ v }}"
+    {%- if fld.kind == "hours" %} inputmode="decimal" placeholder="{{ '0:00' if tf == 'hhmm' else '0.00' if tf == 'decimal2' else '0.0' }}"
+    {%- elif fld.kind == "num" %} inputmode="decimal" placeholder="0.00"
+    {%- elif fld.kind == "int" %} inputmode="numeric" placeholder="0"
+    {%- elif fld.kind == "time" %} placeholder="HH:MM" maxlength="20"
+    {%- elif k in ("from_apt", "to_apt") %} maxlength="8" autocapitalize="characters" autocomplete="off"
+    {%- else %} maxlength="500"{% endif %}></label>
+{% endif %}
+{% endmacro %}
+{% block content %}
+<header class="page-head">
+  <div><h1>{{ "Edit flight" if editing else "Add a flight" }}</h1>
+  <p class="sub">Enter time as 1.3 or 1:18. Blank counts as zero. <a href="/settings">Choose which fields appear</a>.</p></div>
+</header>
+{% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" action="{{ '/flights/%d/edit' % editing if editing else '/flights/new' }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% for s in sections %}
+  <section class="panel" aria-labelledby="sec-{{ s.id }}">
+    <h2 id="sec-{{ s.id }}">{{ s.title }}</h2>
+    <div class="formgrid">{% for fld in s.fields %}{{ control(fld, f) }}{% endfor %}</div>
+    {% if s.id == "flight" %}
+    <details class="more"{% if not tails %} open{% endif %}><summary>Aircraft not in the list? Add it</summary>
+      <div class="formgrid">
+        <label class="field"><span>Tail number</span><input name="new_tail" value="{{ f.get('new_tail', '') }}" maxlength="12" autocapitalize="characters"></label>
+        <label class="field"><span>Make</span><input name="new_make" value="{{ f.get('new_make', '') }}"></label>
+        <label class="field"><span>Model</span><input name="new_model" value="{{ f.get('new_model', '') }}"></label>
+        <label class="field"><span>Class</span><select name="new_class">{% for c in classes %}<option value="{{ c }}"{% if c == f.get('new_class', 'airplane_single_engine_land') %} selected{% endif %}>{{ c.replace("_", " ") }}</option>{% endfor %}</select></label>
+      </div>
+    </details>
+    {% endif %}
+  </section>
+  {% endfor %}
+  <div class="formactions">
+    <button class="btn primary" type="submit">{{ "Save changes" if editing else "Save flight" }}</button>
+    <a class="btn" href="/logbook">Cancel</a>
+  </div>
+</form>
+{% if editing %}
+<section class="panel">
+  <h2>Delete this flight</h2>
+  <p class="hint">This removes the entry from your logbook. The file you originally imported stays in your backups.</p>
+  <form method="post" action="/flights/{{ editing }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger" type="submit">Delete flight</button></form>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,8 @@
+# Exact versions the Docker image is built (and was tested) with.
+fastapi==0.142.2
+starlette==1.7.0
+uvicorn==0.54.0
+jinja2==3.1.6
+python-multipart==0.0.32
+reportlab==4.4.10
+pillow==12.1.1

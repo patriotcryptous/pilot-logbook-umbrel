@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}New note{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>New note</h1><p class="sub">Frequencies, weight and balance numbers, things to remember, what your instructor said.</p></div></header>
+{% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" action="/hangar/note/new">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel">
+    <div class="formgrid">
+      <label class="field span-all"><span>Title</span><input name="title" value="{{ f.get('title', '') }}" maxlength="200" required></label>
+      <label class="field"><span>Category</span><select name="category">{% for key, label in cats %}<option value="{{ key }}"{% if key == f.get('category', 'notes') %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Aircraft (optional)</span><select name="aircraft"><option value="">None</option>{% for t in tails %}<option{% if t == f.get('aircraft') %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Reminder date (optional)</span><input type="date" name="expires" value="{{ f.get('expires', '') }}"></label>
+      <label class="field span-all"><span>Note</span><textarea class="tall" name="notes" maxlength="20000">{{ f.get('notes', '') }}</textarea></label>
+    </div>
+  </section>
+  <div class="formactions"><button class="btn primary" type="submit">Save note</button><a class="btn" href="/hangar">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}More{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>More</h1></div></header>
+<div class="linklist">
+  <a href="/hangar">{{ icon("folder") }}<div>Document Hangar<span>Insurance, certificates, POH, notes, photos and videos</span></div></a>
+  <a href="/scans">{{ icon("image") }}<div>Paper scans<span>Photos and PDFs of your paper logbook pages</span></div></a>
+  <a href="/data">{{ icon("database") }}<div>Import and backup<span>ForeFlight CSV, PDF, full backup and restore</span></div></a>
+  <a href="/settings">{{ icon("sliders") }}<div>Settings<span>Pilot details, time format, which fields to show</span></div></a>
+</div>
+<section class="panel spaced-top">
+  <h2>Appearance</h2>
+  <form class="themebox" method="post" action="/theme">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/more">
+    <button name="theme" value="" aria-pressed="{{ 'true' if theme not in ('light', 'dark') else 'false' }}">Auto</button>
+    <button name="theme" value="light" aria-pressed="{{ 'true' if theme == 'light' else 'false' }}">Light</button>
+    <button name="theme" value="dark" aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">Dark</button>
+  </form>
+</section>
+{% endblock %}

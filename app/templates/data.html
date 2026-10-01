@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Import and backup{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Import and backup</h1><p class="sub">Your logbook lives only on this server. Keep a copy somewhere else too.</p></div></header>
+{% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
+{% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+<div class="two">
+  <form class="panel" method="post" action="/data/import" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Import from ForeFlight</h2>
+    <p class="hint">Export your logbook from ForeFlight as CSV and upload it here. Importing again is safe: flights you already have are skipped.</p>
+    <label class="field"><span>ForeFlight CSV</span><input type="file" name="file" accept=".csv,text/csv" required></label>
+    <div class="actions"><button class="btn primary" type="submit">Import</button></div>
+    <p class="note">If you change a flight in ForeFlight and import again, the changed version is added as a new entry. Delete the older one from the logbook.</p>
+  </form>
+  <div class="panel">
+    <h2>Export</h2>
+    <p class="hint">{{ n }} flight{{ "s" if n != 1 }} in your logbook.</p>
+    <div class="actions"><a class="btn primary" href="/export/foreflight.csv">ForeFlight CSV</a><a class="btn" href="/export/logbook.pdf">Printable PDF</a></div>
+    <p class="note">The CSV uses ForeFlight's own layout and includes every column. The PDF has page totals and a running total.</p>
+  </div>
+  <div class="panel">
+    <h2>Back up everything</h2>
+    <p class="hint">One zip with your flights, aircraft, settings, import history, scanned pages and every file in the Document Hangar.</p>
+    <div class="actions"><a class="btn primary" href="/export/backup.zip">Download backup</a><a class="btn" href="/export/backup.zip?documents=0">Without documents</a></div>
+    <p class="note">A full backup is as large as your Hangar, and needs about that much free space while it is being made. Restoring a backup made without documents leaves your current Hangar alone.</p>
+  </div>
+  <form class="panel" method="post" action="/data/restore" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Restore a backup</h2>
+    <p class="hint">This replaces everything in the logbook with the contents of the backup.</p>
+    <label class="field"><span>Backup zip</span><input type="file" name="file" accept=".zip" required></label>
+    <label class="flag"><input type="checkbox" name="confirm" value="yes">Replace my current logbook</label>
+    <div class="actions"><button class="btn danger" type="submit">Restore</button></div>
+  </form>
+</div>
+{% if imports %}
+<section class="panel spaced-top">
+  <h2>Import history</h2>
+  <table class="plain"><thead><tr><th>File</th><th>Imported</th><th class="n">New</th><th class="n">Skipped</th></tr></thead>
+    <tbody>{% for i in imports %}<tr><td>{{ i.filename }}</td><td>{{ i.imported_at[:16].replace('T', ' ') }} UTC</td><td class="n">{{ i.flights_new }}</td><td class="n">{{ i.flights_skipped }}</td></tr>{% endfor %}</tbody></table>
+  <p class="note">Every imported file is kept exactly as uploaded inside the backup, so you can always show where an entry came from.</p>
+</section>
+{% endif %}
+{% endblock %}

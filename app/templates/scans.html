@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Paper scans{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Paper scans</h1>
+  <p class="sub">Photograph or scan each page of your paper logbook and file it by date range. A backup of the signed original, kept on your own server.</p></div></header>
+{% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+<form class="panel" method="post" action="/scans" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Add pages</h2>
+  <div class="formgrid">
+    <label class="field"><span>Photos or PDFs</span><input type="file" name="files" accept=".jpg,.jpeg,.png,.webp,.pdf,image/*,application/pdf" multiple required><small>JPG, PNG, WebP or PDF, up to 40 MB each.</small></label>
+    <label class="field"><span>First flight on these pages</span><input type="date" name="date_from"></label>
+    <label class="field"><span>Last flight on these pages</span><input type="date" name="date_to"></label>
+    <label class="field"><span>Note</span><input name="note" maxlength="300" placeholder="Book 1, pages 1 to 2"></label>
+  </div>
+  <div class="actions"><button class="btn primary" type="submit">Upload</button></div>
+</form>
+{% if rows %}
+<div class="scan-grid">
+  {% for r in rows %}
+  <div class="scan">
+    <a class="thumb" href="/scans/{{ r.id }}/file" target="_blank" rel="noopener" aria-label="Open {{ r.original_name }}">
+      {% if r.filename.endswith('.pdf') %}PDF{% else %}<img src="/scans/{{ r.id }}/file" alt="Scanned logbook page" loading="lazy">{% endif %}
+    </a>
+    <div class="meta">
+      <b>{% if r.date_from %}{{ r.date_from|pretty_date }}{% if r.date_to and r.date_to != r.date_from %} to {{ r.date_to|pretty_date }}{% endif %}{% else %}No dates{% endif %}</b>
+      {% if r.note %}<span>{{ r.note }}</span>{% endif %}
+      <span class="muted">{{ r.original_name }}, {{ (r.size / 1048576)|round(1) }} MB</span>
+      <form method="post" action="/scans/{{ r.id }}/delete" class="actions"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger" type="submit">Delete</button></form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel empty"><p>No pages yet. Add your first scan above.</p></div>
+{% endif %}
+{% endblock %}

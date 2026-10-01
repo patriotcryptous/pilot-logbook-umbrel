@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Add documents{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Add documents</h1>
+  <p class="sub">PDFs, photos, videos, scans and office files. Up to {{ max_gb }} GB per upload. Large videos can take a while, so keep this page open until it finishes.</p></div></header>
+{% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/hangar/add" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel">
+    <h2>Files</h2>
+    <div class="formgrid">
+      <label class="field span-all"><span>Choose files</span>
+        <input type="file" name="files" multiple required>
+        <small>PDF, JPG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MP3, M4A, WAV, TXT, MD, CSV, DOC(X), XLS(X), PPT(X), RTF, ZIP and similar. Web pages and scripts are not accepted.</small></label>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Details</h2>
+    <p class="hint">Applies to every file in this upload. You can change each one afterwards.</p>
+    <div class="formgrid">
+      <label class="field"><span>Category</span>
+        <select name="category"><option value="auto">Choose for me (photos, videos, otherwise Other)</option>
+          {% for key, label in cats %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Aircraft (optional)</span>
+        <select name="aircraft"><option value="">None</option>{% for t in tails %}<option>{{ t }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Expires (optional)</span><input type="date" name="expires"><small>Insurance, medical, registration. The dashboard warns you ahead of time.</small></label>
+      <label class="field"><span>Title (optional)</span><input name="title" maxlength="200" placeholder="Uses the file name if blank"><small>Only used when you add a single file.</small></label>
+      <label class="field span-all"><span>Notes (optional)</span><textarea name="notes" maxlength="5000"></textarea></label>
+    </div>
+    <details class="more"><summary>What goes in each category</summary>
+      <ul>{% for key, label in cats %}<li><b>{{ label }}.</b> {{ hints[key] }}</li>{% endfor %}</ul></details>
+  </section>
+  <div class="formactions"><button class="btn primary" type="submit">{{ icon("upload") }}Upload</button><a class="btn" href="/hangar">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_hangar_macros.html" import badge, catchip %}
+{% block title %}{{ doc.title }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>{{ doc.title }}</h1>
+    <p class="sub doc-sub">{{ catchip(doc) }}{% if doc.aircraft %}<span class="chip">{{ doc.aircraft }}</span>{% endif %}{{ badge(doc.exp) }}<span>{{ doc.type_label }}{% if doc.kind == "file" %}, {{ doc.size_h }}{% endif %}, added {{ doc.when|pretty_date }}</span></p></div>
+  <div class="actions">
+    <a class="btn" href="/hangar">All documents</a>
+    {% if doc.kind == "file" and doc.exists %}<a class="btn" href="/hangar/{{ doc.id }}/file?download=1">{{ icon("download") }}Download</a>{% endif %}
+  </div>
+</header>
+{% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
+{% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+<div class="doc-detail">
+  <section class="panel preview" aria-label="Preview">
+    {% if doc.kind == "note" %}
+      <div class="note-body">{% if doc.notes %}{{ doc.notes }}{% else %}<span class="muted">This note is empty.</span>{% endif %}</div>
+    {% elif not doc.exists %}
+      <div class="empty"><h2>The file is missing</h2><p>This entry's file wasn't in the backup you restored. Choose a replacement below to fill it back in.</p></div>
+    {% elif doc.tkind == "image" %}
+      <a href="/hangar/{{ doc.id }}/file" target="_blank" rel="noopener"><img src="/hangar/{{ doc.id }}/file" alt="{{ doc.title }}"></a>
+    {% elif doc.tkind == "video" %}
+      <video controls preload="metadata" playsinline src="/hangar/{{ doc.id }}/file"></video>
+    {% elif doc.tkind == "audio" %}
+      <audio controls preload="metadata" src="/hangar/{{ doc.id }}/file"></audio>
+    {% elif doc.tkind == "text" and preview %}
+      <pre class="textpreview">{{ preview }}</pre>
+    {% else %}
+      <div class="bigtile"><span class="ext">{{ doc.ext or "FILE" }}</span>
+        <div class="actions center">
+          {% if doc.tkind == "pdf" %}<a class="btn primary" href="/hangar/{{ doc.id }}/file" target="_blank" rel="noopener">Open PDF</a>{% endif %}
+          <a class="btn{% if doc.tkind != 'pdf' %} primary{% endif %}" href="/hangar/{{ doc.id }}/file?download=1">{{ icon("download") }}Download</a></div>
+        {% if doc.tkind == "photo-file" %}<p class="note">HEIC photos open in Safari and Apple apps. Most other browsers can only download them.</p>{% endif %}</div>
+    {% endif %}
+    {% if doc.kind == "file" and doc.notes %}<p class="desc">{{ doc.notes }}</p>{% endif %}
+  </section>
+
+  <aside>
+    <form class="panel" method="post" action="/hangar/{{ doc.id }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <h2>Details</h2>
+      <div class="formgrid one">
+        <label class="field"><span>Title</span><input name="title" value="{{ doc.title }}" maxlength="200" required></label>
+        <label class="field"><span>Category</span><select name="category">{% for key, label in cats %}<option value="{{ key }}"{% if key == doc.category %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="field"><span>Aircraft</span><select name="aircraft"><option value="">None</option>{% for t in tails %}<option{% if t == doc.aircraft %} selected{% endif %}>{{ t }}</option>{% endfor %}{% if doc.aircraft and doc.aircraft not in tails %}<option selected>{{ doc.aircraft }}</option>{% endif %}</select></label>
+        <label class="field"><span>{{ "Reminder date" if doc.kind == "note" else "Expires" }}</span><input type="date" name="expires" value="{{ doc.expires or '' }}"></label>
+        <label class="field"><span>{{ "Note" if doc.kind == "note" else "Notes" }}</span><textarea name="notes" class="{{ 'tall' if doc.kind == 'note' }}" maxlength="{{ 20000 if doc.kind == 'note' else 5000 }}">{{ doc.notes or "" }}</textarea></label>
+        {% if doc.kind == "file" %}
+        <label class="field"><span>Replace with a newer copy</span><input type="file" name="file"><small>For a renewed policy or a new revision. The old file is deleted when you save.</small></label>
+        {% endif %}
+      </div>
+      <div class="actions"><button class="btn primary" type="submit">Save changes</button></div>
+      {% if doc.kind == "file" %}<p class="note">{{ doc.original_name }}</p>{% endif %}
+    </form>
+    <form class="panel" method="post" action="/hangar/{{ doc.id }}/delete">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <h2>Delete</h2><p class="hint">Removes this {{ "note" if doc.kind == "note" else "file" }} from your server. It can't be undone, so keep a backup first.</p>
+      <button class="btn danger" type="submit">Delete {{ "note" if doc.kind == "note" else "file" }}</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

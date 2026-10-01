@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Settings</h1><p class="sub">Everything here stays on this device.</p></div></header>
+{% if saved %}<div class="notice" role="status">Saved.</div>{% endif %}
+<form method="post" action="/settings">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel">
+    <h2>Pilot</h2><p class="hint">Drives the reminders on your dashboard and the name on your printed logbook.</p>
+    <div class="formgrid">
+      <label class="field"><span>Name</span><input name="name" value="{{ prof.get('name', '') }}"></label>
+      <label class="field"><span>Certificate</span><input name="certificate" value="{{ prof.get('certificate', '') }}" placeholder="Student, Private, Commercial"></label>
+      <label class="field"><span>Last flight review</span><input type="date" name="flight_review" value="{{ prof.get('flight_review', '') }}">
+        <small>{% if review_through %}Valid through {{ review_through|pretty_date }} (FAR 61.56).{% else %}A checkride or new rating can count too (FAR 61.56(d)).{% endif %}</small></label>
+      <label class="field"><span>Medical class</span><input name="medical_class" value="{{ prof.get('medical_class', '') }}" placeholder="Third class, BasicMed"></label>
+      <label class="field"><span>Medical valid through</span><input type="date" name="medical_expires" value="{{ prof.get('medical_expires', '') }}">
+        <small>How long it lasts depends on the class and your age at the exam, so enter the date you worked out.</small></label>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Entry time format</h2><p class="hint">How hours are shown and typed. You can always enter 1.3 or 1:18, whichever format is selected.</p>
+    <div class="radios">
+      {% for k, label in formats.items() %}<label><input type="radio" name="time_format" value="{{ k }}"{% if k == tf %} checked{% endif %}>{{ label }}</label>{% endfor %}
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Configure fields</h2>
+    <p class="hint">Choose the fields you want on each flight, as in ForeFlight. A field that already holds data on a flight always shows when you edit that flight, so nothing gets hidden or lost.</p>
+    <div class="feat-groups">
+      {% for group, items in groups.items() %}
+      <div><h3>{{ group }}</h3>
+        {% for it in items %}
+        <label class="feat"><input type="checkbox" name="feat_{{ it.key }}" value="1"{% if it.on %} checked{% endif %}><span>{{ it.label }}</span>{% if it.hint %}<small>{{ it.hint }}</small>{% endif %}</label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  <div class="formactions"><button class="btn primary" type="submit">Save settings</button></div>
+</form>
+{% endblock %}

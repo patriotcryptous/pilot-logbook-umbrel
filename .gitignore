@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Your own data must never be committed: this repo is public
+app/data/
+data/
+*.db
+*.sqlite
+*.sqlite3
+logbook*.csv
+*-backup*.zip
+.DS_Store
+
+# Umbrel keeps real app data here at runtime; only the placeholder is tracked
+hangar-pilot-logbook/data/*
+!hangar-pilot-logbook/data/.gitkeep

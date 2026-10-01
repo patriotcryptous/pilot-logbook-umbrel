@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Progress{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Progress</h1>
+  <p class="sub">Your logged flying against the minimum experience for a private pilot certificate, airplane single-engine (FAR 61.109(a)). Your instructor decides when you are ready.</p></div></header>
+<section class="panel">
+  <h2>Minimums you can track here</h2>
+  {% for label, have, need, unit in p.tracked %}
+  <div class="meter{% if have >= need %} done{% endif %}">
+    <span>{{ label }}</span>
+    <progress max="{{ need }}" value="{{ [have, need]|min }}" aria-label="{{ label }}"></progress>
+    <span class="val">{% if unit == "hrs" %}{{ have|hrs }}{% else %}{{ have|int }}{% endif %} of {{ need }}{% if have >= need %} <b>met</b>{% endif %}</span>
+  </div>
+  {% endfor %}
+  <p class="note">Cross-country, night and instrument lines estimate from the overlap of the categories you logged on each flight, because a logbook has no separate "dual cross-country" column. Towered landings use the towered counts in your ForeFlight export, for solo flights only. Only flights in a single-engine airplane count, except total time.</p>
+</section>
+<section class="panel">
+  <h2>Keep track of these with your instructor</h2>
+  <p class="hint">A logbook doesn't record the distance or test-date details these need.</p>
+  <ul>{% for u in p.untracked %}<li>{{ u }}</li>{% endfor %}</ul>
+</section>
+<p class="note">Based on the regulation text published in the eCFR on September 29, 2026. Requirements can change, and other certificates and ratings have their own minimums.</p>
+{% endblock %}
