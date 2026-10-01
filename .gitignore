@@ -6,8 +6,8 @@ __pycache__/
 venv/
 
 # Your own data must never be committed: this repo is public
-app/data/
-data/
+/app/data/
+/data/
 *.db
 *.sqlite
 *.sqlite3
