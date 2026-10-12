@@ -261,6 +261,8 @@ def icon(name):
 
 templates.env.globals["icon"] = icon
 templates.env.globals["MORE_KEYS"] = MORE_KEYS
+# Changes with the stylesheet, so browsers fetch the new one after an update instead of a cached copy.
+templates.env.globals["asset_v"] = __import__("hashlib").sha256((BASE / "static" / "app.css").read_bytes()).hexdigest()[:10]
 templates.env.filters["money"] = lambda v: "$%s" % format(round(v or 0), ",")
 templates.env.filters["money2"] = lambda v: "$%s" % format(v or 0, ",.2f")
 
@@ -460,6 +462,9 @@ def parse_flight(form, visible):
         v["night_landings"] = nl
     if v.get("landing_fs_day_towered") is not None and v["landing_fs_day_towered"] > dl:
         errors.append("Towered full-stop landings can't be more than your day full-stop landings.")
+    if "landing_fs_day_towered" in v and "day_landings" in v:
+        # ForeFlight's non-towered column follows from the two you enter, so it's never out of step
+        v["landing_fs_day"] = max(dl - (v["landing_fs_day_towered"] or 0), 0)
     if "all_landings" in v:
         if v["all_landings"] is None:
             v["all_landings"] = dl + nl
@@ -571,7 +576,8 @@ def progress(request: Request):
     with db() as c:
         _, _, tf = settings_ctx(c)
         p = core.progress_private_asel(c)
-    return render(request, "progress.html", p=p, tf=tf)
+        checks = features.specific_requirements(c)
+    return render(request, "progress.html", p=p, checks=checks, tf=tf)
 
 
 # ----------------------------------------------------------------------------- settings
@@ -1209,7 +1215,7 @@ def export_checkride(images: int = 1):
         docs = [hangar.decorate(r, DOCS, today) for r in c.execute(
             "SELECT * FROM documents WHERE category IN ('pilot', 'training', 'aircraft', 'insurance') "
             "ORDER BY category, title COLLATE NOCASE")]
-        pdf = checkride.build(prof, core.progress_private_asel(c), core.totals(c), ends, docs, core.currency(c, today),
+        pdf = checkride.build(prof, dict(core.progress_private_asel(c), checks=features.specific_requirements(c, today)), core.totals(c), ends, docs, core.currency(c, today),
                               reminders_for(c, prof), core.dashboard(c, today)["aircraft"],
                               lambda v: core.fmt_hours(v, tf), DOCS, bool(images), today)
     return Response(pdf, media_type="application/pdf",
@@ -1227,8 +1233,9 @@ def currency_page(request: Request):
         rem = reminders_for(c, prof)
     for k in fc:
         for nm in ("day", "night"):
-            k[nm]["chart"] = mapsvg.forecast_bars(k[nm]["series"], today,
-                                                  f"{nm.capitalize()} landings in the last 90 days, for the next 120 days")
+            k[nm]["chart"] = mapsvg.forecast_chart(
+                k[nm]["series"], today, f"{nm.capitalize()} landings in the last 90 days, for the next 120 days",
+                uid=f"{k['class']}{nm}") if max(k[nm]["series"]) > 0 else None
             k[nm]["upcoming"] = [x for x in k[nm]["drops"] if x["date"] > today][:6]
     return render(request, "currency.html", fc=fc, reminders=rem, today=today, tf=tf)
 

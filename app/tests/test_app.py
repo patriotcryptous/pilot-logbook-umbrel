@@ -733,6 +733,44 @@ def test_new_pages_render(client):
         assert "<script" not in r.text and "onchange" not in r.text, path
 
 
+def test_progress_specific_flights(client):
+    import features
+    c = main.connect()
+    before = {x["far"]: x for x in features.specific_requirements(c)}
+    c.close()
+    assert not before["61.109(a)(5)(ii)"]["met"] and not before["61.109(a)(2)(i)"]["met"]
+    # solo cross-country with the distance worked out from the route
+    assert _flight(client, total="3.0", solo="3.0", pic="3.0", xc="3.0", from_apt="I67", to_apt="I67",
+                   route="I67 KDAY KCMH I67", day_landings=3).status_code == 303
+    # night cross-country with an instructor, distance typed in
+    assert _flight(client, total="2.0", dual_received="2.0", xc="2.0", night="2.0", from_apt="I67", to_apt="I67",
+                   route="I67 KLEX I67", distance="138", night_landings=1).status_code == 303
+    c = main.connect()
+    got = {x["far"]: x for x in features.specific_requirements(c)}
+    g = features.flight_geometry(c.execute("SELECT * FROM flights WHERE route='I67 KDAY KCMH I67'").fetchone())
+    c.close()
+    assert g["stops"] == 3 and g["computed"] > 150 and g["longest_leg"] > 50 and g["source"] == "route"
+    assert got["61.109(a)(5)(ii)"]["met"], got["61.109(a)(5)(ii)"]["detail"]
+    assert got["61.109(a)(2)(i)"]["met"] and "138 nm" in got["61.109(a)(2)(i)"]["detail"]
+    html = client.get("/progress").text
+    assert "Flights that must meet a standard" in html and "I67 \u2192 KDAY" in html
+    assert client.get("/export/checkride.pdf").status_code == 200
+
+
+def test_stylesheet_is_cache_busted(client):
+    html = client.get("/").text
+    v = re.search(r'/static/app.css\?v=([0-9a-f]{10})', html)
+    assert v and client.get(f"/static/app.css?v={v.group(1)}").status_code == 200
+
+
+def test_towered_fills_non_towered_on_save(client):
+    assert _flight(client, day_landings=5, landing_fs_day_towered=2, comments="towered split").status_code == 303
+    c = main.connect()
+    row = c.execute("SELECT landing_fs_day, landing_fs_day_towered FROM flights WHERE comments='towered split'").fetchone()
+    c.close()
+    assert tuple(row) == (3, 2)
+
+
 def test_delete_all_requires_phrase(client):
     n = lambda: (lambda c: c.execute("SELECT COUNT(*) FROM flights").fetchone()[0])(main.connect())
     before = n()

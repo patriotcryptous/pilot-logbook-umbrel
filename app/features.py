@@ -649,3 +649,93 @@ def mark_sent(db, keys):
     now = datetime.now().isoformat(timespec="seconds")
     db.executemany("INSERT OR IGNORE INTO alerts_sent(key, sent_at) VALUES (?,?)", [(k, now) for k in keys])
     db.commit()
+
+
+# ----------------------------------------------------------------------------- specific-flight requirements (61.109(a))
+
+def leg_nm(a, b):
+    """Great-circle distance between two airports in nautical miles."""
+    la1, lo1, la2, lo2 = map(math.radians, (a["lat"], a["lon"], b["lat"], b["lon"]))
+    h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+    return 2 * 3440.065 * math.asin(min(1.0, math.sqrt(h)))
+
+
+def flight_geometry(row):
+    """Airports, legs and distances for one flight. Distance you typed wins over the computed one."""
+    pts = []
+    for code in route_points(row):
+        ap = resolve_airport(code)
+        if ap and (not pts or pts[-1][1]["icao"] != ap["icao"]):
+            pts.append((code, ap))
+    legs = [(a[0], b[0], leg_nm(a[1], b[1])) for a, b in zip(pts, pts[1:])]
+    computed = sum(n for *_, n in legs)
+    entered = row["distance"] or 0
+    return {"points": pts, "legs": legs, "computed": computed, "entered": entered,
+            "distance": entered if entered > 0 else computed,
+            "source": "entered" if entered > 0 else ("route" if legs else "none"),
+            "longest_leg": max((n for *_, n in legs), default=0.0),
+            "stops": len({ap["icao"] for _, ap in pts[1:]})}
+
+
+def _route_label(row):
+    seq = route_points(row)
+    return " → ".join(seq) if seq else "no route"
+
+
+def specific_requirements(db, today=None):
+    """The 61.109(a) items that need one particular flight, checked from distance, route and landings."""
+    today = today or date.today()
+    single = ("f.aircraft IN (SELECT ident FROM aircraft WHERE aircraft_class LIKE 'airplane%single%')")
+    rows = db.execute(f"SELECT f.* FROM flights f WHERE {single} ORDER BY f.date").fetchall()
+    out = []
+
+    # (a)(2)(i) one night cross-country over 100 nm total distance, with an instructor
+    best = None
+    for r in rows:
+        if (r["night"] or 0) > 0 and (r["xc"] or 0) > 0 and (r["dual_received"] or 0) > 0:
+            g = flight_geometry(r)
+            if not best or g["distance"] > best[1]["distance"]:
+                best = (r, g)
+    met = bool(best and best[1]["distance"] > 100)
+    if best:
+        detail = (f'{"Met" if met else "Longest so far"}: {best[0]["date"]}, {_route_label(best[0])}, '
+                  f'{best[1]["distance"]:.0f} nm ({"distance you entered" if best[1]["source"] == "entered" else "from the route"}).')
+    else:
+        detail = "No flight yet with night, cross-country and dual received time all logged."
+    out.append({"label": "Night cross-country with an instructor, over 100 nm total", "far": "61.109(a)(2)(i)",
+                "met": met, "detail": detail, "date": best[0]["date"] if met else None})
+
+    # (a)(5)(ii) solo cross-country: 150 nm total, full-stop landings at three points, one leg over 50 nm
+    best, best_score = None, -1
+    for r in rows:
+        if (r["solo"] or 0) <= 0 or (r["xc"] or 0) <= 0:
+            continue
+        g = flight_geometry(r)
+        fs = (r["day_landings"] or 0) + (r["night_landings"] or 0)
+        parts = {"distance": g["distance"] >= 150, "points": g["stops"] >= 3 and fs >= 3,
+                 "leg": g["longest_leg"] > 50}
+        score = sum(parts.values()) + min(g["distance"], 150) / 1000
+        if score > best_score:
+            best, best_score = (r, g, parts, fs), score
+    if best:
+        r, g, parts, fs = best
+        met = all(parts.values())
+        bits = [f'{g["distance"]:.0f} nm total{"" if parts["distance"] else " (needs 150)"}',
+                f'{g["stops"]} landing point{"s" if g["stops"] != 1 else ""} and {fs} full-stop landing{"s" if fs != 1 else ""}'
+                + ("" if parts["points"] else " (needs 3 points)"),
+                (f'longest leg {g["longest_leg"]:.0f} nm' + ("" if parts["leg"] else " (needs one over 50)"))
+                if g["legs"] else "longest leg unknown: put the airports in the route"]
+        detail = f'{"Met" if met else "Closest so far"}: {r["date"]}, {_route_label(r)}. ' + "; ".join(bits) + "."
+    else:
+        met, detail = False, "No solo cross-country flight logged yet."
+    out.append({"label": "Solo cross-country of 150 nm, full-stop landings at 3 points, one leg over 50 nm",
+                "far": "61.109(a)(5)(ii)", "met": met, "detail": detail, "date": best[0]["date"] if met else None})
+
+    # (a)(4) 3 hours of training within the 2 calendar months before the month of the test
+    start = end_of_month(today, -3) + timedelta(days=1)
+    h = sum((r["dual_received"] or 0) for r in rows if start.isoformat() <= r["date"] <= today.isoformat())
+    out.append({"label": "3 hours of instruction preparing for the practical test", "far": "61.109(a)(4)",
+                "met": h >= 3, "have": h, "need": 3, "hours": True,
+                "detail": f'If your checkride is this month: {h:.1f} h of dual since {start.strftime("%b %-d")}. '
+                          "Your instructor confirms it was test preparation."})
+    return out

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: hangar-pilot-logbook
 category: files
 name: Pilot Logbook
-version: "1.3.0"
+version: "1.3.1"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
@@ -33,6 +33,6 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Endorsement log with a downloadable checkride packet, currency forecast, route map and landings by airport, personal minimums with a go/no-go check, fuel and cost tracking, expiry alerts to your phone, and scheduled backups. Also: a towered full-stop landings field and a way to delete all logbook entries.
+  Progress now checks the night cross-country, the long solo cross-country and the 3 hours of test preparation from the distance, route and dates you log. A new currency forecast chart, fixes for pages that showed blank or bunched up after updating, and tidier towered landing fields.
 submitter: patriotcryptous
 submission: https://github.com/patriotcryptous/pilot-logbook-umbrel

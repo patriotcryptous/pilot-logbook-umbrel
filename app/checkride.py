@@ -108,9 +108,13 @@ def build(prof, progress, totals, endorsements, documents, currency, reminders, 
         data.append([label, val, f"{need}{' h' if unit == 'hrs' else ''}",
                      _status("Met", GREEN) if have >= need else _status("Not yet", AMBER)])
     st.append(_table(data, [W * .52, W * .16, W * .16, W * .16]))
-    st.append(Spacer(1, 4))
-    st.append(Paragraph("Confirm with your instructor (not tracked by the logbook): " + "; ".join(progress["untracked"]) + ".",
-                        S["small"]))
+    if progress.get("checks"):
+        st.append(Spacer(1, 6))
+        data = [["Specific flight", "From your logbook", "Status"]]
+        for chk in progress["checks"]:
+            data.append([f'{chk["label"]} ({chk["far"]})', Paragraph(chk["detail"], S["small"]),
+                         _status("Met", GREEN) if chk["met"] else _status("Not yet", AMBER)])
+        st.append(_table(data, [W * .34, W * .50, W * .16]))
     st.append(Paragraph("Cross-country, night and instrument training lines are estimated from the overlap of the "
                         "categories logged on each flight.", S["small"]))
 
