@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Costs{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Costs</h1>
+  <p class="sub">What your flying costs, from the rates you set here and the fuel and costs you enter on each flight.</p></div></header>
+{% if saved %}<div class="notice" role="status">Rates saved.</div>{% endif %}
+
+<section class="readout costs" aria-label="Cost totals">
+  <div class="cell total"><span class="lbl">Total spent</span><span class="val">{{ t.total|money }}</span><span class="hint">{{ t.flights }} flight{{ "s" if t.flights != 1 }}</span></div>
+  <div class="cell"><span class="lbl"><i class="dot dual"></i>Aircraft</span><span class="val">{{ t.aircraft|money }}</span><span class="hint">&nbsp;</span></div>
+  <div class="cell"><span class="lbl"><i class="dot solo"></i>Instructor</span><span class="val">{{ t.instructor|money }}</span><span class="hint">&nbsp;</span></div>
+  <div class="cell"><span class="lbl"><i class="dot fuel"></i>Fuel</span><span class="val">{{ t.fuel|money }}</span><span class="hint">{% if t.fuel_gal %}{{ "%.1f"|format(t.fuel_gal) }} gal{% else %}&nbsp;{% endif %}</span></div>
+  <div class="cell"><span class="lbl">Per flight hour</span><span class="val">{{ t.per_hour|money }}</span><span class="hint">{{ t.hours|hrs }} h logged</span></div>
+  <div class="cell"><span class="lbl">To the 61.109 minimums</span><span class="val">{{ cs.projection|money }}</span><span class="hint">{% if cs.remaining_hours %}at least {{ cs.remaining_hours|hrs }} h more{% else %}hour minimums met{% endif %}</span></div>
+</section>
+
+{% if t.missing_rate or t.missing_instr %}
+<div class="notice err" role="status">{% if t.missing_rate %}{{ t.missing_rate }} flight{{ "s" if t.missing_rate != 1 }} have no aircraft rate. {% endif %}{% if t.missing_instr %}{{ t.missing_instr }} flight{{ "s" if t.missing_instr != 1 }} with instruction have no instructor rate. {% endif %}Set default rates below so the totals are complete.</div>
+{% endif %}
+
+<div class="widgets">
+  <section class="widget w-costmonths" aria-labelledby="w-cm">
+    <header><h2 id="w-cm">Spending per month</h2>
+      <div class="legend"><span><i class="dot dual"></i>Aircraft</span><span><i class="dot solo"></i>Instructor</span><span><i class="dot fuel"></i>Fuel</span><span><i class="dot"></i>Other</span></div></header>
+    <div class="chart-scroll">{{ chart }}</div>
+  </section>
+  <section class="widget w-costac" aria-labelledby="w-ca">
+    <header><h2 id="w-ca">By aircraft</h2></header>
+    {% for a in cs.aircraft[:6] %}
+    <div class="ac"><span><b>{{ a.ident }}</b><span class="model">{{ a.hours|hrs }} h</span></span><span class="n">{{ a.total|money }}</span></div>
+    {% endfor %}
+    {% if t.fuel_gal %}
+    <ul class="statuslist">
+      <li><span>Average fuel price</span><span class="n">{{ t.per_gal|money2 }}/gal</span></li>
+      <li><span>Fuel burn</span><span class="n">{{ "%.1f"|format(t.gph) }} gal/hr</span></li>
+    </ul>
+    {% endif %}
+  </section>
+</div>
+
+<form class="panel spaced-top" method="post" action="/costs/rates">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Default rates</h2>
+  <p class="hint">Used for every flight that doesn't have its own rate, including flights imported from ForeFlight. Wet rates (fuel included) work best; if you also enter fuel costs on a flight, they're added on top.</p>
+  <div class="formgrid">
+    <label class="field"><span>Instructor ($/hr)</span><input name="instructor" value="{{ '%g'|format(rates.instructor) if rates.instructor is not none else '' }}" inputmode="decimal"></label>
+    {% for tail in tails %}
+    <label class="field"><span>{{ tail }} ($/hr)</span><input name="ac_{{ tail }}" value="{{ '%g'|format(rates.aircraft[tail]) if tail in rates.aircraft else '' }}" inputmode="decimal"></label>
+    {% endfor %}
+  </div>
+  <div class="actions"><button class="btn primary" type="submit">Save rates</button></div>
+</form>
+
+{% if cs.recent %}
+<section class="panel">
+  <h2>Recent flights</h2>
+  <div class="scrollx">
+  <table class="plain"><thead><tr><th>Date</th><th>Aircraft</th><th class="n">Aircraft</th><th class="n">Instructor</th><th class="n">Fuel</th><th class="n">Other</th><th class="n">Total</th><th></th></tr></thead>
+    <tbody>{% for r, c in cs.recent %}<tr>
+      <td>{{ r.date|short_date }}, {{ r.date[:4] }}</td><td>{{ r.aircraft }}</td>
+      <td class="n">{{ c.aircraft|money }}</td><td class="n">{{ c.instructor|money }}</td><td class="n">{{ c.fuel|money }}</td><td class="n">{{ c.other|money }}</td>
+      <td class="n"><b>{{ c.total|money }}</b></td>
+      <td class="n"><a class="edit" href="/flights/{{ r.id }}/edit" aria-label="Edit costs for {{ r.date }}">{{ icon("edit") }}</a></td></tr>{% endfor %}</tbody></table>
+  </div>
+  <p class="note">Enter fuel, other costs or a different rate on any flight under "Cost and fuel" on its edit page. The 61.109 figure is the most hours still missing from any one requirement on the <a href="/progress">Progress</a> page, priced at your average per hour; most students fly more than the minimums.</p>
+</section>
+{% endif %}
+{% endblock %}

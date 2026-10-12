@@ -71,7 +71,8 @@ FIELDS = [
     _f("takeoff_day", "Takeoff Day", "Day takeoffs, non-towered", "int", "landings", "towered"),
     _f("takeoff_day_towered", "Takeoff Day Towered", "Day takeoffs, towered", "int", "landings", "towered"),
     _f("landing_fs_day", "Landing Full-Stop Day", "Day landings, non-towered", "int", "landings", "towered"),
-    _f("landing_fs_day_towered", "Landing Full-Stop Day Towered", "Day landings, towered", "int", "landings", "towered"),
+    _f("landing_fs_day_towered", "Landing Full-Stop Day Towered", "Towered full-stop landings (day)", "int", "landings",
+       hint="Of your day full-stop landings, how many were at a towered airport."),
     _f("day_takeoffs", "DayTakeoffs", "Day takeoffs", "int", "landings", "takeoffs"),
     _f("day_landings", "DayLandingsFullStop", "Day full-stop landings", "int", "landings"),
     _f("night_takeoffs", "NightTakeoffs", "Night takeoffs", "int", "landings", "takeoffs"),
@@ -87,7 +88,7 @@ NULLABLE = {"takeoff_day", "takeoff_day_towered", "landing_fs_day", "landing_fs_
 HOURS_KEYS = [f["key"] for f in FIELDS if f["kind"] == "hours"]
 # Fields derived from landings: only shown in the form when their feature is switched on.
 DERIVED = {"day_takeoffs", "night_takeoffs", "all_landings", "takeoff_day", "takeoff_day_towered",
-           "landing_fs_day", "landing_fs_day_towered"}
+           "landing_fs_day"}
 # Hours that can never exceed the flight's total time.
 SUBSET_OF_TOTAL = ["pic", "sic", "night", "solo", "xc", "picus", "multi_pilot", "ifr", "examiner", "nvg",
                    "actual_instr", "sim_instr", "dual_received", "dual_given"]
@@ -99,8 +100,8 @@ SECTIONS = [
                       "sic", "picus", "multi_pilot", "dual_given", "sim_flight", "ground_training", "ground_given",
                       "examiner", "nvg", "nvg_ops", "distance", "holds",
                       "approach1", "approach2", "approach3", "approach4", "approach5", "approach6"]),
-    ("landings", "Landings", ["day_landings", "night_landings", "all_landings", "day_takeoffs", "night_takeoffs",
-                              "takeoff_day", "takeoff_day_towered", "landing_fs_day", "landing_fs_day_towered"]),
+    ("landings", "Landings", ["day_landings", "landing_fs_day_towered", "night_landings", "all_landings", "day_takeoffs",
+                              "night_takeoffs", "takeoff_day", "takeoff_day_towered", "landing_fs_day"]),
     ("start_end", "Start and end", ["time_out", "time_off", "time_on", "time_in", "hobbs_start", "hobbs_end",
                                     "tach_start", "tach_end", "on_duty", "off_duty"]),
     ("people", "People and remarks", ["instructor", "instructor_comments", "person1", "person2", "person3",
@@ -425,8 +426,8 @@ def export_foreflight_csv(db):
         if (r["fingerprint"] or "").startswith("manual:"):  # imported rows are exported exactly as received
             if v["takeoff_day"] is None and v["takeoff_day_towered"] is None:
                 v["takeoff_day"] = v["day_takeoffs"] or 0
-            if v["landing_fs_day"] is None and v["landing_fs_day_towered"] is None:
-                v["landing_fs_day"] = v["day_landings"] or 0
+            if v["landing_fs_day"] is None:
+                v["landing_fs_day"] = max((v["day_landings"] or 0) - (v["landing_fs_day_towered"] or 0), 0)
         extra = json.loads(r["extra_json"] or "{}")
         w.writerow([fmt_ff(f, v[f["key"]]) for f in FIELDS] + [extra.get(c, "") for c in extra_cols])
     return out.getvalue()
@@ -454,7 +455,9 @@ def add_flight(db, values):
     db.execute(f"INSERT INTO flights(fingerprint, extra_json, {','.join(cols)}) "
                f"VALUES (?,?,{','.join('?' * len(cols))})",
                ("manual:" + uuid.uuid4().hex, "{}", *[values[c] for c in cols]))
+    fid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.commit()
+    return fid
 
 
 def update_flight(db, flight_id, values):
@@ -468,6 +471,10 @@ def update_flight(db, flight_id, values):
 
 def delete_flight(db, flight_id):
     db.execute("DELETE FROM flights WHERE id=?", (flight_id,))
+    try:
+        db.execute("DELETE FROM flight_costs WHERE flight_id=?", (flight_id,))
+    except sqlite3.OperationalError:
+        pass
     db.commit()
 
 

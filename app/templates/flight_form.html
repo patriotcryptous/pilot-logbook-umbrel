@@ -12,7 +12,7 @@
 {% elif fld.kind == "date" %}
 <label class="field"><span>{{ fld.label }}</span><input type="date" name="{{ k }}" value="{{ v }}" required></label>
 {% else %}
-<label class="field{% if k == 'route' %} span-all{% endif %}"><span>{{ fld.label }}</span>
+<label class="field{% if k == 'route' %} span-all{% endif %}"><span>{{ fld.label }}</span>{% if fld.hint %}<small class="muted">{{ fld.hint }}</small>{% endif %}
   <input name="{{ k }}" value="{{ v }}"
     {%- if fld.kind == "hours" %} inputmode="decimal" placeholder="{{ '0:00' if tf == 'hhmm' else '0.00' if tf == 'decimal2' else '0.0' }}"
     {%- elif fld.kind == "num" %} inputmode="decimal" placeholder="0.00"
@@ -46,6 +46,15 @@
     {% endif %}
   </section>
   {% endfor %}
+  <section class="panel" aria-labelledby="sec-cost">
+    <details class="more"{% if f.get('aircraft_rate') or f.get('instructor_rate') or f.get('fuel_gal') or f.get('fuel_cost') or f.get('other_cost') %} open{% endif %}>
+      <summary><h2 id="sec-cost" class="inline">Cost and fuel</h2> <span class="muted small">optional</span></summary>
+      <p class="hint">Leave the rates blank to use the defaults you set on the <a href="/costs">Costs</a> page. Aircraft time is billed on Hobbs when you log it, otherwise on total time; instructor time on dual received plus ground training.</p>
+      <div class="formgrid">{% for k, label in cost_fields %}
+        <label class="field"><span>{{ label }}</span><input name="{{ k }}" value="{{ f.get(k, '') }}" inputmode="decimal" placeholder="{{ '0.0' if k == 'fuel_gal' else '0.00' }}"></label>{% endfor %}
+      </div>
+    </details>
+  </section>
   <div class="formactions">
     <button class="btn primary" type="submit">{{ "Save changes" if editing else "Save flight" }}</button>
     <a class="btn" href="/logbook">Cancel</a>

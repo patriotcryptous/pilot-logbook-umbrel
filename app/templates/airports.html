@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Airports{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>Airports</h1><p class="sub">{{ s.airports|length }} airport{{ "s" if s.airports|length != 1 }} from your logbook{% if year %} in {{ year }}{% endif %}.</p></div>
+  {% if years %}
+  <form class="toolbar" method="get" action="/airports">
+    <label>Year<select name="year"><option value="">All years</option>{% for y in years %}<option{% if y == year %} selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
+    <button class="btn" type="submit">Show</button>
+  </form>
+  {% endif %}
+</header>
+{% if not s.airports %}
+<div class="panel empty"><h2>No airports yet</h2><p>Flights with From, To or Route airports show up here on a map.</p></div>
+{% else %}
+<section class="panel">
+  <h2>Route map</h2>
+  <div class="map-wrap">{{ map }}</div>
+  <p class="note">Circles grow with the number of flights; lines get thicker the more often you flew a leg. State lines: US Census Bureau via us-atlas. Airport data: airportsdata (MIT).</p>
+</section>
+<div class="two">
+<section class="panel">
+  <h2>Landings by airport</h2>
+  <table class="plain"><thead><tr><th>Airport</th><th class="n">Flights</th><th class="n">Landings</th><th></th></tr></thead>
+    <tbody>{% for a in s.airports %}<tr>
+      <td><b>{{ a.code }}</b> <span class="muted small">{{ a.ap.name }}{% if a.ap.city %}, {{ a.ap.city }}{% endif %}{% if a.ap.subd %}, {{ a.ap.subd }}{% endif %}</span></td>
+      <td class="n">{{ a.visits }}</td><td class="n">{{ a.landings }}</td>
+      <td class="barcell"><progress max="{{ top }}" value="{{ a.landings }}" aria-label="{{ a.code }} landings"></progress></td></tr>{% endfor %}</tbody></table>
+  <p class="note">Each stop along a route gets one landing and the rest go to the destination, because a logbook doesn't record exactly where each landing happened.</p>
+</section>
+<section class="panel">
+  <h2>Towered and non-towered</h2>
+  {% set nt = [s.day_full_stop - s.towered, 0]|max %}
+  <div class="split">
+    <div><span class="lbl">Towered</span><b class="n">{{ s.towered }}</b></div>
+    <div><span class="lbl">Non-towered</span><b class="n">{{ nt }}</b></div>
+  </div>
+  {% if s.day_full_stop %}<progress class="split-bar" max="{{ s.day_full_stop }}" value="{{ s.towered }}" aria-label="Share of towered landings"></progress>{% endif %}
+  <p class="note">Day full-stop landings, split by the towered count you logged on each flight.</p>
+  {% if s.unknown %}
+  <h3 class="subhead">Codes not found</h3>
+  <p class="muted small">{% for code, n in s.unknown %}{{ code }} ({{ n }}){{ ", " if not loop.last }}{% endfor %}</p>
+  <p class="note">Usually waypoints or navaids in the route, not airports, so they're left off the map.</p>
+  {% endif %}
+</section>
+</div>
+{% endif %}
+{% endblock %}

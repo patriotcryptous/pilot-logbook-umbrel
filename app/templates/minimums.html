@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Personal minimums{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Personal minimums</h1>
+  <p class="sub">Set your own limits once, then check the weather against them before you go. Your limits, your call: this only does the comparison.</p></div></header>
+{% if saved %}<div class="notice" role="status">Minimums saved.</div>{% endif %}
+{% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+<form class="panel" method="get" action="/minimums">
+  <input type="hidden" name="check" value="1">
+  <h2>Go / no-go check</h2>
+  <p class="hint">Paste a METAR or type the numbers. Typed numbers win over the METAR.</p>
+  <div class="formgrid">
+    <label class="field span-all"><span>METAR</span><input name="metar" value="{{ metar }}" placeholder="KLUK 121853Z 24012G20KT 10SM BKN045 18/07 A3001" autocapitalize="characters" spellcheck="false"></label>
+    <label class="field"><span>Minimums for</span><select name="profile">{% for k, label in profiles %}<option value="{{ k }}"{% if k == profile %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label class="field"><span>Runway</span><input name="runway_id" value="{{ cond.get('runway_id', '') }}" placeholder="23 or 05L" maxlength="4"></label>
+    <label class="field"><span>Runway length (ft)</span><input name="runway_length" value="{{ cond.get('runway_length') if cond.get('runway_length') is not none else '' }}" inputmode="numeric"></label>
+    <label class="field"><span>Wind from (°)</span><input name="wind_dir" value="{{ cond.get('wind_dir', '') }}" placeholder="240 or VRB" maxlength="3"></label>
+    <label class="field"><span>Wind (kt)</span><input name="wind" value="{{ cond.get('wind')|int if cond.get('wind') is not none else '' }}" inputmode="numeric"></label>
+    <label class="field"><span>Gusts (kt)</span><input name="gust" value="{{ cond.get('gust')|int if cond.get('gust') is not none else '' }}" inputmode="numeric"></label>
+    <label class="field"><span>Visibility (SM)</span><input name="visibility" value="{{ cond.get('visibility') if cond.get('visibility') is not none else '' }}" inputmode="decimal"></label>
+    <label class="field"><span>Ceiling (ft AGL)</span><input name="ceiling" value="{{ cond.get('ceiling')|int if cond.get('ceiling') is not none else '' }}" inputmode="numeric"></label>
+  </div>
+  <label class="flag"><input type="checkbox" name="night" value="1"{% if cond.get('night') %} checked{% endif %}>Flying at night</label>
+  <div class="actions"><button class="btn primary" type="submit">Check</button><a class="btn" href="/minimums">Clear</a></div>
+</form>
+
+{% if result %}
+<section class="panel verdict {{ result.verdict }}" aria-live="polite">
+  <h2>{% if result.verdict == "go" %}Within your minimums{% elif result.verdict == "nogo" %}Outside your minimums{% else %}Nothing to compare yet{% endif %}</h2>
+  {% if result.verdict == "skip" %}<p class="hint">Set your {{ dict(profiles)[profile]|lower }} minimums below and enter some conditions.</p>{% endif %}
+  {% if result.runway_hdg is not none and result.crosswind is not none %}
+  <p class="hint">Runway heading {{ "%03d"|format(result.runway_hdg) }}°: {{ "%.0f"|format(result.headwind|abs) }} kt {{ "headwind" if result.headwind >= 0 else "tailwind" }}, {{ "%.0f"|format(result.crosswind) }} kt crosswind{% if cond.get('gust') %} in the gusts{% endif %}.</p>
+  {% endif %}
+  <table class="plain"><thead><tr><th>Item</th><th class="n">Now</th><th class="n">Your limit</th><th class="n">Result</th></tr></thead>
+    <tbody>{% for l in result.lines %}<tr><td>{{ l.label }}</td>
+      <td class="n">{% if l.actual is none %}<span class="muted">-</span>{% elif l.actual is number %}{{ "%g"|format(l.actual) }} {{ l.unit }}{% else %}{{ l.actual }}{% endif %}</td>
+      <td class="n">{% if l.limit is none %}<span class="muted">not set</span>{% elif l.limit is number %}{{ "%g"|format(l.limit) }} {{ l.unit }}{% else %}{{ l.limit }}{% endif %}</td>
+      <td class="n"><span class="badge {{ 'ok-go' if l.state == 'go' else 'expired' if l.state == 'nogo' else 'ok' }}">{{ "Go" if l.state == "go" else "No-go" if l.state == "nogo" else "Not checked" }}</span></td></tr>{% endfor %}</tbody></table>
+  <p class="note">Crosswind uses the gust speed when there is one, and counts a variable wind as all crosswind. Always check the full weather briefing, NOTAMs and the aircraft's demonstrated crosswind.</p>
+</section>
+{% endif %}
+
+<form class="panel" method="post" action="/minimums">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Your minimums</h2>
+  <p class="hint">Leave a box blank if you don't use that limit. Work these out with your instructor and tighten them when you're tired, rusty or in an unfamiliar aircraft.</p>
+  <div class="scrollx">
+  <table class="plain mins">
+    <thead><tr><th>Limit</th>{% for k, label in profiles %}<th>{{ label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for fk, label, unit, kind in fields %}
+    <tr><td>{{ label }} <span class="muted small">({{ unit }})</span></td>
+      {% for p, _ in profiles %}{% set v = mins[p][fk] %}<td><input name="{{ p }}_{{ fk }}" value="{{ '%g'|format(v) if v is not none else '' }}" inputmode="decimal" aria-label="{{ label }}, {{ p }}"></td>{% endfor %}</tr>
+    {% endfor %}
+    <tr><td>Night flying allowed</td>{% for p, _ in profiles %}<td><label class="flag"><input type="checkbox" name="{{ p }}_night" value="1"{% if mins[p].night %} checked{% endif %}>Yes</label></td>{% endfor %}</tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="actions"><button class="btn primary" type="submit">Save minimums</button></div>
+</form>
+{% endblock %}

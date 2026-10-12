@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Endorsements{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>Endorsements</h1><p class="sub">The endorsements your instructor gave you, with when each one runs out.</p></div>
+  <a class="btn primary" href="/export/checkride.pdf">{{ icon("download") }}Checkride packet</a>
+</header>
+{% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
+{% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+{% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+{% if rows %}
+<div class="scrollx">
+<table class="tbl endorse">
+  <thead><tr><th>Date</th><th>Endorsement</th><th>FAR</th><th>Instructor</th><th>Valid through</th><th>Copy</th><th></th></tr></thead>
+  <tbody>
+  {% for e in rows %}
+  <tr{% if e.superseded %} class="old"{% endif %}>
+    <td class="n">{{ e.date|pretty_date }}</td>
+    <td><b>{{ e.title }}</b>{% if e.notes %}<div class="muted small">{{ e.notes }}</div>{% endif %}</td>
+    <td class="small">{{ e.far_ref or "" }}</td>
+    <td>{{ e.cfi_name or "" }}{% if e.cfi_cert %}<div class="muted small">{{ e.cfi_cert }}{% if e.cfi_cert_expires %}, exp. {{ e.cfi_cert_expires|pretty_date }}{% endif %}</div>{% endif %}</td>
+    <td>{% if e.superseded %}<span class="badge ok">Superseded</span>
+      {% elif e.expires %}<span class="badge {{ 'expired' if e.state == 'expired' else 'soon' if e.state == 'soon' else 'ok' }}">{% if e.state == "expired" %}Expired {% endif %}{{ e.expires|pretty_date }}</span>
+      {% else %}<span class="muted small">No expiry</span>{% endif %}</td>
+    <td>{% if e.document_id and doc_titles.get(e.document_id) %}<a href="/hangar/{{ e.document_id }}">{{ doc_titles[e.document_id] }}</a>{% endif %}</td>
+    <td class="n"><a class="edit" href="/training?edit={{ e.id }}#form" aria-label="Edit {{ e.title }}">{{ icon("edit") }}</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="panel empty"><h2>No endorsements yet</h2><p>Add each endorsement your instructor writes in your logbook. Solo endorsements expire after 90 days, and you'll see when.</p></div>
+{% endif %}
+
+<form class="panel spaced-top" id="form" method="post" action="/training">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if editing %}<input type="hidden" name="id" value="{{ editing.id }}">{% endif %}
+  <h2>{{ "Edit endorsement" if editing else "Add an endorsement" }}</h2>
+  <p class="hint">Pick the type and the title, FAR reference and usual expiry fill themselves in. Change anything that doesn't match what your instructor wrote.</p>
+  <div class="formgrid">
+    <label class="field span-all"><span>Type</span><select name="kind">
+      {% for k, t, far, rule in kinds %}<option value="{{ k }}"{% if f.get('kind', 'solo') == k %} selected{% endif %}>{{ t }}{% if far %} ({{ far }}){% endif %}</option>{% endfor %}</select></label>
+    <label class="field"><span>Date</span><input type="date" name="date" value="{{ f.get('date', '') }}" required></label>
+    <label class="field span-all"><span>Title</span><input name="title" value="{{ f.get('title', '') }}" maxlength="200" placeholder="Leave blank to use the type"></label>
+    <label class="field"><span>FAR reference</span><input name="far_ref" value="{{ f.get('far_ref', '') or '' }}" maxlength="80" placeholder="From the type"></label>
+    <label class="field"><span>Valid through</span><input type="date" name="expires" value="{{ f.get('expires', '') or '' }}">
+      <small>Blank works it out: 90 days for solo and Class B, end of the 2nd calendar month for the practical test, 24 calendar months for a knowledge test.</small></label>
+    <label class="field"><span>Instructor</span><input name="cfi_name" value="{{ f.get('cfi_name', '') or '' }}" maxlength="120"></label>
+    <label class="field"><span>CFI certificate number</span><input name="cfi_cert" value="{{ f.get('cfi_cert', '') or '' }}" maxlength="40"></label>
+    <label class="field"><span>CFI certificate expires</span><input type="date" name="cfi_cert_expires" value="{{ f.get('cfi_cert_expires', '') or '' }}"></label>
+    <label class="field span-all"><span>Copy in the Document Hangar</span><select name="document_id"><option value="">None</option>
+      {% for d in docs %}<option value="{{ d.id }}"{% if f.get('document_id')|string == d.id|string %} selected{% endif %}>{{ d.title }}</option>{% endfor %}</select>
+      <small>Photograph the logbook page, <a href="/hangar/add">add it to the Hangar</a> (Training and endorsements), then link it here. Photos go into the checkride packet.</small></label>
+    <label class="field span-all"><span>Notes</span><textarea name="notes" maxlength="2000">{{ f.get('notes', '') or '' }}</textarea></label>
+  </div>
+  <div class="actions"><button class="btn primary" type="submit">{{ "Save changes" if editing else "Add endorsement" }}</button>
+    {% if editing %}<a class="btn" href="/training">Cancel</a>{% endif %}</div>
+</form>
+{% if editing and editing.title %}
+<form class="panel" method="post" action="/training/{{ editing.id }}/delete">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Delete this endorsement</h2>
+  <div class="actions"><button class="btn danger" type="submit">Delete</button></div>
+</form>
+{% endif %}
+<p class="note">Validity follows FAR 61.87(n), 61.95, 61.39(a) and 61.35 as published in the eCFR. Your instructor's endorsement in your logbook is the record that counts.</p>
+{% endblock %}

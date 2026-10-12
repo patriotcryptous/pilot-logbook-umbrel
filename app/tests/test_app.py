@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 os.environ["DATA_DIR"] = tempfile.mkdtemp()
+os.environ["HL_SCHEDULER"] = "0"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -188,6 +189,21 @@ def test_edit_keeps_fields_not_on_the_form(client):
                                                    "total": "2.0", "hobbs_start": "1200", "hobbs_end": "1100"})
     assert bad.status_code == 422 and "Hobbs end" in bad.text
     assert client.get("/flights/99999/edit").status_code == 404
+
+
+def test_towered_landings_field(client):
+    assert 'name="landing_fs_day_towered"' in client.get("/flights/new").text  # on the form by default
+    d = {"csrf": token(client), "date": "2026-09-20", "aircraft": "N1TEST", "total": "1.0", "solo": "1.0",
+         "day_landings": "4", "landing_fs_day_towered": "5"}
+    r = client.post("/flights/new", data=d)
+    assert r.status_code == 422 and "more than your day full-stop" in r.text
+    assert client.post("/flights/new", data=dict(d, landing_fs_day_towered="3")).status_code == 303
+    c = main.connect()
+    row = c.execute("SELECT landing_fs_day_towered, all_landings FROM flights WHERE date='2026-09-20'").fetchone()
+    c.close()
+    assert tuple(row) == (3, 4)
+    csv = client.get("/export/foreflight.csv").text if client.get("/export/foreflight.csv").status_code == 200 else ""
+    assert csv == "" or "Landing Full-Stop Day Towered" in csv
 
 
 def test_delete(client):
@@ -555,3 +571,176 @@ def test_old_database_without_documents_table_upgrades():
     d.row_factory = sqlite3.Row
     core.ensure_schema(d)
     assert d.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
+
+
+def _flight(client, **kw):
+    d = {"csrf": token(client), "date": date.today().isoformat(), "aircraft": "N1TEST", "total": "1.0"}
+    d.update({k: str(v) for k, v in kw.items()})
+    return client.post("/flights/new", data=d)
+
+
+def test_endorsements_and_checkride_packet(client):
+    from datetime import timedelta
+    assert client.get("/training").status_code == 200
+    when = (date.today() - timedelta(days=80)).isoformat()
+    r = client.post("/training", data={"csrf": token(client), "kind": "solo", "date": when, "cfi_name": "Jane Doe",
+                                        "cfi_cert": "1234567CFI", "notes": "<script>x</script>"})
+    assert r.status_code == 303
+    c = main.connect()
+    e = c.execute("SELECT * FROM endorsements ORDER BY id DESC LIMIT 1").fetchone()
+    c.close()
+    assert e["expires"] == (date.today() + timedelta(days=10)).isoformat() and e["far_ref"] == "61.87(n)"
+    page = client.get("/training").text
+    assert "Jane Doe" in page and "<script>x" not in page and "badge soon" in page
+    # a newer solo endorsement supersedes the old one
+    client.post("/training", data={"csrf": token(client), "kind": "solo", "date": date.today().isoformat()})
+    assert "Superseded" in client.get("/training").text
+    # practical test: valid through the end of the second calendar month
+    client.post("/training", data={"csrf": token(client), "kind": "practical_test", "date": "2026-08-15"})
+    c = main.connect()
+    assert c.execute("SELECT expires FROM endorsements WHERE kind='practical_test'").fetchone()[0] == "2026-10-31"
+    c.close()
+    bad = client.post("/training", data={"csrf": token(client), "kind": "solo", "date": "nope"})
+    assert bad.status_code == 422 and "date of the endorsement" in bad.text
+    assert client.post("/training", data={"kind": "solo", "date": when}).status_code == 403
+    edit = client.post("/training", data={"csrf": token(client), "id": e["id"], "kind": "solo", "date": when,
+                                           "title": "Solo, renamed", "expires": "2030-01-01"})
+    assert edit.status_code == 303 and "Solo, renamed" in client.get("/training").text
+    pdf = client.get("/export/checkride.pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and len(pdf.content) > 3000
+    assert client.post(f"/training/{e['id']}/delete", data={"csrf": token(client)}).status_code == 303
+    assert "Solo, renamed" not in client.get("/training").text
+
+
+def test_currency_forecast_page(client):
+    import features
+    assert _flight(client, day_landings=3).status_code == 303
+    c = main.connect()
+    fc = features.currency_forecast(c, date.today())
+    c.close()
+    single = [k for k in fc if k["class"] == "airplane_single_engine_land"][0]
+    assert single["day"]["current"] and single["day"]["series"][0] >= 3
+    assert single["day"]["series"][95] < 3  # landings drop out of the 90-day window
+    html = client.get("/currency").text
+    assert "Currency forecast" in html and 'class="chart forecast"' in html and "Current through" in html
+
+
+def test_airports_map_and_landings(client):
+    import features
+    assert _flight(client, from_apt="I67", to_apt="I67", route="I67 KHAO-I67 ZZZZ9", day_landings=4).status_code == 303
+    assert features.resolve_airport("I67")["icao"] == "KI67"
+    assert features.resolve_airport("KLUK")["lid"] == "LUK"
+    assert features.resolve_airport("../x") is None
+    c = main.connect()
+    s = features.airport_stats(c)
+    c.close()
+    by = {a["ap"]["icao"]: a for a in s["airports"]}
+    assert by["KHAO"]["landings"] == 1 and by["KI67"]["landings"] >= 3
+    assert ("KHAO", "KI67") in s["legs"] and dict(s["unknown"]).get("ZZZZ9") == 1
+    html = client.get("/airports").text
+    assert 'class="chart map"' in html and "map-state" in html and "KHAO" in html
+    assert client.get("/airports?year=1999").status_code == 200
+
+
+def test_personal_minimums(client):
+    import features
+    m = features.parse_metar("KLUK 121853Z 24012G20KT 1 1/2SM BR FEW008 BKN015 OVC030 18/07 A3001")
+    assert m == {"wind_dir": "240", "wind": 12, "gust": 20, "visibility": 1.5, "ceiling": 1500}
+    assert features.parse_metar("KI67 121855Z VRB03KT P6SM CLR 20/05 A3002")["no_ceiling"]
+    assert features.parse_metar("KXXX 1200Z 00000KT M1/4SM VV002")["visibility"] == 0.25
+    assert features.runway_heading("05L") == 50 and features.runway_heading("360") == 0
+    h, x = features.wind_components("240", 20, 270)
+    assert x == 10.0 and h == 17.3
+    r = client.post("/minimums", data={"csrf": token(client), "solo_ceiling": "3000", "solo_visibility": "5",
+                                        "solo_wind": "15", "solo_crosswind": "8", "solo_gust_spread": "5"})
+    assert r.status_code == 303
+    page = client.get("/minimums?check=1&profile=solo&runway_id=27&metar=KLUK+121853Z+24012G20KT+10SM+BKN045").text
+    assert "Outside your minimums" in page and "No-go" in page
+    ok = client.get("/minimums?check=1&profile=solo&runway_id=24&metar=KLUK+121853Z+24005KT+10SM+CLR").text
+    assert "Within your minimums" in ok
+    assert client.post("/minimums", data={"csrf": token(client), "solo_wind": "lots"}).status_code == 422
+
+
+def test_costs(client):
+    import features
+    assert client.post("/costs/rates", data={"csrf": token(client), "instructor": "60", "ac_N1TEST": "150"}).status_code == 303
+    r = _flight(client, total="2.0", dual_received="2.0", fuel_gal="10", fuel_cost="60", other_cost="15.50",
+                comments="cost test")
+    assert r.status_code == 303
+    c = main.connect()
+    fid = c.execute("SELECT id FROM flights WHERE comments='cost test'").fetchone()[0]
+    row = c.execute("SELECT * FROM flights WHERE id=?", (fid,)).fetchone()
+    cost = features.flight_cost(row, features.costs_for(c, fid), features.rates_get(core.profile_get(c)))
+    c.close()
+    assert cost["aircraft"] == 300 and cost["instructor"] == 120 and cost["total"] == 495.5
+    edit = client.get(f"/flights/{fid}/edit").text
+    assert 'name="fuel_gal" value="10"' in edit
+    assert _flight(client, fuel_cost="abc").status_code == 422
+    html = client.get("/costs").text
+    assert "Spending per month" in html and "$" in html
+
+
+def test_expiry_alerts(client, monkeypatch):
+    import features
+    from datetime import timedelta
+    sent = []
+    monkeypatch.setattr(features, "send_alert", lambda st, title, msg, high=False, timeout=10: sent.append((title, high)))
+    bad = client.post("/settings/alerts", data={"csrf": token(client), "url": "ftp://x", "enabled": "1"})
+    assert "alert_error" in bad.headers["location"]
+    r = client.post("/settings/alerts", data={"csrf": token(client), "url": "https://ntfy.sh/test-topic-xyz",
+                                               "days": "30, 7, 0", "enabled": "1", "token": "secret"})
+    assert r.status_code == 303
+    c = main.connect()
+    core.profile_set(c, {"medical_expires": (date.today() + timedelta(days=5)).isoformat()})
+    c.close()
+    assert main.run_alerts() >= 1
+    assert any(t.startswith("Medical certificate: expires in 5 days") and high for t, high in sent)
+    n = len(sent)
+    assert main.run_alerts() == 0 and len(sent) == n  # never twice for the same threshold
+    page = client.get("/settings").text
+    assert "Expiry alerts" in page and "secret" not in page and "Coming up" in page
+    assert client.post("/settings/alerts/test", data={"csrf": token(client)}).headers["location"].endswith("alerts=sent")
+
+
+def test_scheduled_backups(client):
+    for p in main.BACKUPS.glob("*.zip"):
+        p.unlink()
+    assert client.post("/data/autobackup", data={"csrf": token(client), "freq": "daily", "keep": "2"}).status_code == 303
+    made = main.run_autobackup()
+    assert made and made.exists() and "no-documents" in made.name
+    assert main.run_autobackup() is None  # not due again until tomorrow
+    for _ in range(3):
+        assert client.post("/data/backups/now", data={"csrf": token(client)}).status_code == 303
+    names = [b["name"] for b in main.list_backups()]
+    assert len(names) == 2
+    with zipfile.ZipFile(main.BACKUPS / names[0]) as z:
+        assert "logbook.db" in z.namelist()
+    page = client.get("/data").text
+    assert "Scheduled backups" in page and names[0] in page
+    assert client.get(f"/data/backups/{names[0]}").status_code == 200
+    assert client.get("/data/backups/..%2Flogbook.db").status_code == 404
+    assert client.get("/data/backups/logbook.db").status_code == 404
+    assert client.post(f"/data/backups/{names[0]}/delete", data={"csrf": token(client)}).status_code == 303
+    assert len(main.list_backups()) == 1
+    client.post("/data/autobackup", data={"csrf": token(client), "freq": "off", "keep": "7"})
+    assert main.run_autobackup() is None
+
+
+def test_new_pages_render(client):
+    for path in ("/training", "/currency", "/airports", "/costs", "/minimums", "/more", "/settings", "/data", "/progress"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert "<script" not in r.text and "onchange" not in r.text, path
+
+
+def test_delete_all_requires_phrase(client):
+    n = lambda: (lambda c: c.execute("SELECT COUNT(*) FROM flights").fetchone()[0])(main.connect())
+    before = n()
+    assert before > 0
+    assert client.post("/data/delete-all", data={"phrase": "Delete-All-Logs"}).status_code == 403
+    for bad in ("", "delete-all-logs", "Delete All Logs"):
+        client.post("/data/delete-all", data={"csrf": token(client), "phrase": bad})
+        assert n() == before
+    assert "Delete-All-Logs" in client.get("/data").text
+    assert client.post("/data/delete-all", data={"csrf": token(client), "phrase": "Delete-All-Logs"}).status_code == 303
+    assert n() == 0

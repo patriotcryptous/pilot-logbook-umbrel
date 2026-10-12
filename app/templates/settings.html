@@ -38,4 +38,30 @@
   </section>
   <div class="formactions"><button class="btn primary" type="submit">Save settings</button></div>
 </form>
+
+<section class="panel spaced-top" id="alerts" aria-labelledby="alerts-h">
+  <h2 id="alerts-h">{{ icon("bell") }} Expiry alerts</h2>
+  <p class="hint">Get a phone notification before your medical, flight review, endorsements, Hangar documents or passenger currency run out. Alerts go to an <a href="https://ntfy.sh" rel="noreferrer">ntfy</a> topic, either the free ntfy.sh service or the ntfy app on your Umbrel, or to any address that accepts a plain-text POST.</p>
+  {% if alerts == "saved" %}<div class="notice" role="status">Alert settings saved.</div>{% elif alerts == "sent" %}<div class="notice" role="status">Test alert sent. Check your phone.</div>{% endif %}
+  {% if alert_error %}<div class="notice err" role="alert">{{ alert_error }}</div>{% endif %}
+  <form method="post" action="/settings/alerts" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="formgrid">
+      <label class="field span-all"><span>Send alerts to</span><input name="url" type="url" value="{{ al.url }}" placeholder="https://ntfy.sh/your-private-topic-name">
+        <small>Pick a long, hard-to-guess topic name: anyone who knows a public ntfy.sh topic can read it. On your Umbrel the ntfy app's address looks like http://umbrel.local:PORT/your-topic.</small></label>
+      <label class="field"><span>Access token</span><input name="token" type="password" placeholder="{{ 'Saved, leave blank to keep' if al.token else 'Optional' }}">
+        {% if al.token %}<small><label class="flag"><input type="checkbox" name="clear_token" value="1">Remove saved token</label></small>{% endif %}</label>
+      <label class="field"><span>Days before</span><input name="days" value="{{ al.days|join(', ') }}" inputmode="numeric">
+        <small>One alert at each, for example 30, 7, 0 (0 is the day it expires).</small></label>
+    </div>
+    <label class="flag"><input type="checkbox" name="enabled" value="1"{% if al.enabled %} checked{% endif %}>Send expiry alerts</label>
+    <div class="actions"><button class="btn primary" type="submit">Save alerts</button>
+      <button class="btn" type="submit" formaction="/settings/alerts/test"{% if not al.url %} disabled{% endif %}>Send a test alert</button></div>
+  </form>
+  <p class="note">Checked every 15 minutes while the app runs.{% if al.last_run %} Last check {{ al.last_run.replace("T", " ") }}{% if al.last_sent %}, last alert sent {{ al.last_sent.replace("T", " ") }}{% endif %}.{% endif %}{% if al.last_error %} <span class="bad">Last attempt failed: {{ al.last_error }}</span>{% endif %}</p>
+  {% if upcoming %}
+  <h3 class="subhead">Coming up</h3>
+  <ul class="statuslist">{% for x in upcoming %}<li><span>{{ x.label }}</span><span class="muted small">{{ x.through|pretty_date }}, {% if x.days == 0 %}today{% else %}in {{ x.days }} day{{ "s" if x.days != 1 }}{% endif %}</span></li>{% endfor %}</ul>
+  {% endif %}
+</section>
 {% endblock %}

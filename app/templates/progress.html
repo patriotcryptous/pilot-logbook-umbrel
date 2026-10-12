@@ -19,5 +19,10 @@
   <p class="hint">A logbook doesn't record the distance or test-date details these need.</p>
   <ul>{% for u in p.untracked %}<li>{{ u }}</li>{% endfor %}</ul>
 </section>
+<section class="panel">
+  <h2>Checkride packet</h2>
+  <p class="hint">One PDF with your hours against these minimums, your endorsements, currency, key documents and a checklist of what to bring.</p>
+  <div class="actions"><a class="btn primary" href="/export/checkride.pdf">{{ icon("download") }}Download checkride packet</a><a class="btn" href="/training">Endorsements</a></div>
+</section>
 <p class="note">Based on the regulation text published in the eCFR on September 29, 2026. Requirements can change, and other certificates and ratings have their own minimums.</p>
 {% endblock %}

@@ -44,7 +44,7 @@
   <a href="/logbook"{% if active == "logbook" %} aria-current="page"{% endif %}>{{ icon("book") }}Logbook</a>
   <a class="add" href="/flights/new"{% if active == "add" %} aria-current="page"{% endif %}>{{ icon("plus") }}Add</a>
   <a href="/progress"{% if active == "progress" %} aria-current="page"{% endif %}>{{ icon("target") }}Progress</a>
-  <a href="/more"{% if active in ("more", "hangar", "scans", "data", "settings") %} aria-current="page"{% endif %}>{{ icon("more") }}More</a>
+  <a href="/more"{% if active in MORE_KEYS %} aria-current="page"{% endif %}>{{ icon("more") }}More</a>
 </nav>
 </body>
 </html>

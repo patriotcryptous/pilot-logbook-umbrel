@@ -1,18 +1,21 @@
 """Pilot Logbook - self-hosted, single-pilot web app for umbrelOS.
 
-No accounts (umbrelOS's app proxy already sits in front), no telemetry, no outbound requests,
-no JavaScript. Pages are rendered on the server, charts are inline SVG.
+No accounts (umbrelOS's app proxy already sits in front), no telemetry, no JavaScript. The only
+outbound request is the optional expiry alert, sent to the address the pilot sets in Settings. Pages are rendered on the server, charts are inline SVG.
 """
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
 import shutil
 import sqlite3
 import tempfile
+import threading
+import time
 import zipfile
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
@@ -27,8 +30,11 @@ from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import charts
+import checkride
+import features
 import hangar
 import logbook_core as core
+import mapsvg
 import pdfexport
 
 BASE = Path(__file__).parent
@@ -37,6 +43,7 @@ SCANS = DATA / "scans"
 DOCS = DATA / "documents"
 THUMBS = DOCS / "_thumbs"
 TMP = DATA / "tmp"
+BACKUPS = DATA / "backups"
 DB_PATH = DATA / "logbook.db"
 MAX_CSV = 20 * 1024 * 1024
 MAX_SCAN = 40 * 1024 * 1024
@@ -46,7 +53,14 @@ PAGE_SIZE = 100
 SCAN_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
               ".webp": "image/webp", ".pdf": "application/pdf"}
 
-app = FastAPI(title="Pilot Logbook", docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def lifespan(_app):
+    start_scheduler()
+    yield
+    _stop.set()
+
+
+app = FastAPI(title="Pilot Logbook", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
@@ -57,7 +71,7 @@ def prepare_dirs():
     """Create storage folders; uploads spool to disk under DATA/tmp so large videos never fill memory."""
     DATA.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(TMP, ignore_errors=True)  # leftovers from an interrupted upload or backup
-    for d in (SCANS, DOCS, THUMBS, TMP):
+    for d in (SCANS, DOCS, THUMBS, TMP, BACKUPS):
         d.mkdir(parents=True, exist_ok=True)
     tempfile.tempdir = str(TMP)
 
@@ -81,8 +95,13 @@ def db():
         c.close()
 
 
+def ensure_all(c):
+    core.ensure_schema(c)
+    features.ensure_schema(c)
+
+
 with db() as _c:
-    core.ensure_schema(_c)
+    ensure_all(_c)
 
 
 @app.middleware("http")
@@ -114,8 +133,12 @@ def check_csrf(request: Request, token: str):
 
 NAV = [("dash", "/", "Dashboard", "grid"), ("logbook", "/logbook", "Logbook", "book"),
        ("add", "/flights/new", "Add flight", "plus"), ("progress", "/progress", "Progress", "target"),
+       ("training", "/training", "Endorsements", "award"), ("currency", "/currency", "Currency", "clock"),
+       ("airports", "/airports", "Airports", "map"), ("costs", "/costs", "Costs", "dollar"),
+       ("minimums", "/minimums", "Minimums", "shield"),
        ("hangar", "/hangar", "Document Hangar", "folder"), ("scans", "/scans", "Paper scans", "image"), ("data", "/data", "Import & backup", "database"),
        ("settings", "/settings", "Settings", "sliders")]
+MORE_KEYS = [k for k, *_ in NAV[4:]] + ["more"]
 
 
 def nav_key(path):
@@ -223,6 +246,12 @@ ICONS = {
     "download": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
     "play": '<path d="M7 4.5v15l12-7.5z"/>',
     "edit": '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    "award": '<circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/>',
+    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    "map": '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/>',
+    "dollar": '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    "shield": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
+    "bell": '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 }
 
 
@@ -231,6 +260,9 @@ def icon(name):
 
 
 templates.env.globals["icon"] = icon
+templates.env.globals["MORE_KEYS"] = MORE_KEYS
+templates.env.filters["money"] = lambda v: "$%s" % format(round(v or 0), ",")
+templates.env.filters["money2"] = lambda v: "$%s" % format(v or 0, ",.2f")
 
 
 async def read_limited(f: UploadFile, limit: int) -> bytes:
@@ -426,6 +458,8 @@ def parse_flight(form, visible):
         v["day_landings"] = dl
     if "night_landings" in v:
         v["night_landings"] = nl
+    if v.get("landing_fs_day_towered") is not None and v["landing_fs_day_towered"] > dl:
+        errors.append("Towered full-stop landings can't be more than your day full-stop landings.")
     if "all_landings" in v:
         if v["all_landings"] is None:
             v["all_landings"] = dl + nl
@@ -459,7 +493,7 @@ def new_flight(request: Request):
     if last:
         f.update(aircraft=last["aircraft"], from_apt=last["from_apt"], to_apt=last["to_apt"])
     return render(request, "flight_form.html", tf=tf, f=f, errors=[], editing=None,
-                  sections=build_sections(core.visible_fields(enabled)), **ctx)
+                  sections=build_sections(core.visible_fields(enabled)), cost_fields=features.COST_FIELDS, **ctx)
 
 
 @app.post("/flights/new")
@@ -471,12 +505,15 @@ async def create_flight(request: Request):
         ctx = form_context(c)
         visible = core.visible_fields(enabled)
         v, new, errors = parse_flight(form, visible)
+        costs, cerr = features.parse_costs(form)
+        errors += cerr
         if errors:
             return render(request, "flight_form.html", status=422, tf=tf, f=dict(form), errors=errors, editing=None,
-                          sections=build_sections(visible), **ctx)
+                          sections=build_sections(visible), cost_fields=features.COST_FIELDS, **ctx)
         if new["tail"]:
             core.ensure_aircraft(c, new["tail"], new["make"], new["model"], new["cls"])
-        core.add_flight(c, v)
+        fid = core.add_flight(c, v)
+        features.save_costs(c, fid, costs)
     return RedirectResponse("/logbook", status_code=303)
 
 
@@ -488,8 +525,10 @@ def edit_flight(request: Request, fid: int):
         if not row:
             raise HTTPException(404, "That flight doesn't exist.")
         ctx = form_context(c)
-    return render(request, "flight_form.html", tf=tf, f=field_strings(row, tf), errors=[], editing=fid,
-                  sections=build_sections(core.visible_fields(enabled, row)), **ctx)
+        f = field_strings(row, tf)
+        f.update({k: ("%g" % v) for k, v in features.costs_for(c, fid).items() if k != "flight_id" and v is not None})
+    return render(request, "flight_form.html", tf=tf, f=f, errors=[], editing=fid,
+                  sections=build_sections(core.visible_fields(enabled, row)), cost_fields=features.COST_FIELDS, **ctx)
 
 
 @app.post("/flights/{fid}/edit")
@@ -504,12 +543,15 @@ async def save_flight(request: Request, fid: int):
         ctx = form_context(c)
         visible = core.visible_fields(enabled, row)  # fields not shown keep their stored values
         v, new, errors = parse_flight(form, visible)
+        costs, cerr = features.parse_costs(form)
+        errors += cerr
         if errors:
             return render(request, "flight_form.html", status=422, tf=tf, f=dict(form), errors=errors, editing=fid,
-                          sections=build_sections(visible), **ctx)
+                          sections=build_sections(visible), cost_fields=features.COST_FIELDS, **ctx)
         if new["tail"]:
             core.ensure_aircraft(c, new["tail"], new["make"], new["model"], new["cls"])
         core.update_flight(c, fid, v)
+        features.save_costs(c, fid, costs)
     return RedirectResponse("/logbook", status_code=303)
 
 
@@ -535,15 +577,18 @@ def progress(request: Request):
 # ----------------------------------------------------------------------------- settings
 
 @app.get("/settings")
-def settings(request: Request, saved: int = 0):
+def settings(request: Request, saved: int = 0, alerts: str = "", alert_error: str = ""):
     with db() as c:
         prof, enabled, tf = settings_ctx(c)
+        al = features.alert_settings(prof)
+        upcoming = [x for x in features.expiring_items(c, prof) if x["days"] >= 0][:8]
     review = prof.get("flight_review")
     groups = {}
     for key, label, group, hint, _ in core.FEATURES:
         groups.setdefault(group, []).append({"key": key, "label": label, "hint": hint, "on": key in enabled})
     return render(request, "settings.html", prof=prof, tf=tf, groups=groups, formats=core.TIME_FORMATS,
-                  review_through=core.flight_review_through(review) if review else None, saved=bool(saved))
+                  review_through=core.flight_review_through(review) if review else None, saved=bool(saved),
+                  al=al, alerts=alerts, alert_error=alert_error, upcoming=upcoming)
 
 
 @app.post("/settings")
@@ -918,7 +963,21 @@ def data_page(request: Request, msg: str = "", error: str = ""):
         imports = c.execute("SELECT id, filename, imported_at, flights_new, flights_skipped FROM imports "
                             "ORDER BY id DESC").fetchall()
         n = c.execute("SELECT COUNT(*) FROM flights").fetchone()[0]
-    return render(request, "data.html", imports=imports, n=n, msg=msg, error=error)
+        ab = autobackup_settings(core.profile_get(c))
+    return render(request, "data.html", imports=imports, n=n, msg=msg, error=error, ab=ab, backups=list_backups())
+
+
+@app.post("/data/delete-all")
+def delete_all_logs(request: Request, csrf: str = Form(""), phrase: str = Form("")):
+    check_csrf(request, csrf)
+    if phrase.strip() != "Delete-All-Logs":
+        return back("/data", error="Nothing was deleted. Type Delete-All-Logs exactly to confirm.")
+    with db() as c:
+        c.execute("DELETE FROM flights")
+        c.execute("DELETE FROM flight_costs")
+        c.execute("DELETE FROM imports")  # so the same ForeFlight file can be imported again
+        c.commit()
+    return back("/data", msg="All logbook entries were deleted.")
 
 
 @app.post("/data/import")
@@ -959,9 +1018,8 @@ def export_pdf():
                     headers={"Content-Disposition": f'attachment; filename="logbook-{date.today().isoformat()}.pdf"'})
 
 
-@app.get("/export/backup.zip")
-def backup(documents: int = 1):
-    """Everything in one zip. ?documents=0 leaves out the Document Hangar files to keep it small."""
+def build_backup_zip(zpath: Path, documents: bool):
+    """Write a full backup to zpath. Scheduled backups and the download button share this."""
     tmp = Path(tempfile.mkdtemp())
     snap = tmp / "logbook.db"
     src = connect()
@@ -969,7 +1027,13 @@ def backup(documents: int = 1):
     src.backup(dst)  # consistent snapshot even if a write is in flight
     dst.close()
     src.close()
-    zpath = tmp / "backup.zip"
+    try:
+        _write_zip(zpath, snap, documents)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _write_zip(zpath, snap, documents):
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(snap, "logbook.db")
         z.writestr("backup.json", json.dumps({"app": "pilot-logbook", "version": 2, "documents": bool(documents)}))
@@ -980,6 +1044,14 @@ def backup(documents: int = 1):
             for p in sorted(DOCS.iterdir()):
                 if p.is_file():  # already-compressed media: store, don't waste time deflating
                     z.write(p, f"documents/{p.name}", compress_type=zipfile.ZIP_STORED)
+
+
+@app.get("/export/backup.zip")
+def backup(documents: int = 1):
+    """Everything in one zip. ?documents=0 leaves out the Document Hangar files to keep it small."""
+    tmp = Path(tempfile.mkdtemp())
+    zpath = tmp / "backup.zip"
+    build_backup_zip(zpath, bool(documents))
     label = "backup" if documents else "backup-no-documents"
     return FileResponse(zpath, media_type="application/zip",
                         filename=f"logbook-{label}-{date.today().isoformat()}.zip",
@@ -1055,7 +1127,7 @@ async def restore(request: Request, csrf: str = Form(""), confirm: str = Form(""
         os.replace(work / "logbook.db", DB_PATH)
         shutil.rmtree(old, ignore_errors=True)
         with db() as c:
-            core.ensure_schema(c)  # bring older backups up to the current schema
+            ensure_all(c)  # bring older backups up to the current schema
             if keep_docs is not None:
                 c.execute("DELETE FROM documents")
                 for r in keep_docs:
@@ -1066,6 +1138,412 @@ async def restore(request: Request, csrf: str = Form(""), confirm: str = Form(""
         return back("/data", error=str(e))
     shutil.rmtree(work, ignore_errors=True)
     return back("/data", msg="Backup restored.")
+
+
+# ----------------------------------------------------------------------------- endorsements and checkride packet
+
+def training_docs(c):
+    return [dict(r) for r in c.execute(
+        "SELECT id, title, category FROM documents ORDER BY CASE category WHEN 'training' THEN 0 WHEN 'pilot' THEN 1 ELSE 2 END, "
+        "title COLLATE NOCASE")]
+
+
+@app.get("/training")
+def training(request: Request, msg: str = "", error: str = "", edit: int = 0):
+    today = date.today()
+    with db() as c:
+        rows = features.endorsements(c, today)
+        docs = training_docs(c)
+        last_cfi = c.execute("SELECT cfi_name, cfi_cert, cfi_cert_expires FROM endorsements ORDER BY date DESC, id DESC "
+                             "LIMIT 1").fetchone()
+    doc_titles = {d["id"]: d["title"] for d in docs}
+    editing = next((r for r in rows if r["id"] == edit), None)
+    f = dict(editing) if editing else {"date": today.isoformat(), **(dict(last_cfi) if last_cfi else {})}
+    return render(request, "training.html", rows=rows, docs=docs, doc_titles=doc_titles, kinds=features.ENDORSEMENT_KINDS,
+                  f=f, editing=editing, msg=msg, error=error, errors=[])
+
+
+@app.post("/training")
+async def training_save(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    v, errors = features.parse_endorsement(form)
+    try:
+        eid = int(form.get("id") or 0)
+    except ValueError:
+        eid = 0
+    with db() as c:
+        if v["document_id"] and not c.execute("SELECT 1 FROM documents WHERE id=?", (v["document_id"],)).fetchone():
+            v["document_id"] = None
+        if eid and not c.execute("SELECT 1 FROM endorsements WHERE id=?", (eid,)).fetchone():
+            raise HTTPException(404, "That endorsement doesn't exist.")
+        if errors:
+            rows = features.endorsements(c)
+            docs = training_docs(c)
+            return render(request, "training.html", status=422, rows=rows, docs=docs,
+                          doc_titles={d["id"]: d["title"] for d in docs}, kinds=features.ENDORSEMENT_KINDS,
+                          f=dict(form), editing={"id": eid} if eid else None, msg="", error="", errors=errors)
+        features.save_endorsement(c, v, eid or None)
+    return back("/training", msg="Endorsement saved.")
+
+
+@app.post("/training/{eid}/delete")
+async def training_delete(request: Request, eid: int):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    with db() as c:
+        c.execute("DELETE FROM endorsements WHERE id=?", (eid,))
+        c.commit()
+    return back("/training", msg="Endorsement deleted.")
+
+
+@app.get("/export/checkride.pdf")
+def export_checkride(images: int = 1):
+    today = date.today()
+    with db() as c:
+        prof, _, tf = settings_ctx(c)
+        ends = features.endorsements(c, today)
+        for e in ends:
+            e["doc"] = dict(r) if e["document_id"] and (r := c.execute(
+                "SELECT filename, original_name FROM documents WHERE id=? AND kind='file'", (e["document_id"],)).fetchone()) else None
+        docs = [hangar.decorate(r, DOCS, today) for r in c.execute(
+            "SELECT * FROM documents WHERE category IN ('pilot', 'training', 'aircraft', 'insurance') "
+            "ORDER BY category, title COLLATE NOCASE")]
+        pdf = checkride.build(prof, core.progress_private_asel(c), core.totals(c), ends, docs, core.currency(c, today),
+                              reminders_for(c, prof), core.dashboard(c, today)["aircraft"],
+                              lambda v: core.fmt_hours(v, tf), DOCS, bool(images), today)
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="checkride-packet-{today.isoformat()}.pdf"'})
+
+
+# ----------------------------------------------------------------------------- currency forecast
+
+@app.get("/currency")
+def currency_page(request: Request):
+    today = date.today()
+    with db() as c:
+        prof, _, tf = settings_ctx(c)
+        fc = features.currency_forecast(c, today)
+        rem = reminders_for(c, prof)
+    for k in fc:
+        for nm in ("day", "night"):
+            k[nm]["chart"] = mapsvg.forecast_bars(k[nm]["series"], today,
+                                                  f"{nm.capitalize()} landings in the last 90 days, for the next 120 days")
+            k[nm]["upcoming"] = [x for x in k[nm]["drops"] if x["date"] > today][:6]
+    return render(request, "currency.html", fc=fc, reminders=rem, today=today, tf=tf)
+
+
+# ----------------------------------------------------------------------------- airports and route map
+
+@app.get("/airports")
+def airports_page(request: Request, year: str = ""):
+    with db() as c:
+        _, _, tf = settings_ctx(c)
+        stats = features.airport_stats(c, year)
+        years = [r[0] for r in c.execute("SELECT DISTINCT substr(date,1,4) FROM flights ORDER BY 1 DESC")]
+    top = max((a["landings"] for a in stats["airports"]), default=1) or 1
+    return render(request, "airports.html", s=stats, map=mapsvg.route_map(stats), years=years, year=year, top=top, tf=tf)
+
+
+# ----------------------------------------------------------------------------- personal minimums
+
+def _f(v):
+    try:
+        return float(str(v).replace(",", "").strip()) if str(v or "").strip() else None
+    except ValueError:
+        return None
+
+
+@app.get("/minimums")
+def minimums_page(request: Request, saved: int = 0, profile: str = "solo", metar: str = "", wind_dir: str = "",
+                  wind: str = "", gust: str = "", visibility: str = "", ceiling: str = "", runway_id: str = "",
+                  runway_length: str = "", night: str = "", check: int = 0):
+    with db() as c:
+        prof, _, _ = settings_ctx(c)
+    mins = features.minimums_get(prof)
+    profile = profile if profile in mins else "solo"
+    cond = {"wind_dir": wind_dir.strip().upper()[:3], "wind": _f(wind), "gust": _f(gust), "visibility": _f(visibility),
+            "ceiling": _f(ceiling), "runway_id": runway_id.strip()[:4], "runway_length": _f(runway_length),
+            "night": bool(night)}
+    parsed = {}
+    if metar.strip():
+        parsed = features.parse_metar(metar[:600])
+        for k in ("wind", "gust", "visibility", "ceiling"):
+            if cond[k] is None and parsed.get(k) is not None:
+                cond[k] = parsed[k]
+        if not cond["wind_dir"] and parsed.get("wind_dir"):
+            cond["wind_dir"] = parsed["wind_dir"]
+        if parsed.get("no_ceiling") and cond["ceiling"] is None:
+            cond["no_ceiling"] = True
+    if cond["wind_dir"] and cond["wind_dir"] != "VRB" and not cond["wind_dir"].isdigit():
+        cond["wind_dir"] = ""
+    result = features.check_minimums(mins[profile], cond) if check else None
+    return render(request, "minimums.html", mins=mins, fields=features.MIN_FIELDS, profiles=features.MIN_PROFILES,
+                  profile=profile, cond=cond, metar=metar[:600], parsed=parsed, result=result, saved=bool(saved), errors=[])
+
+
+@app.post("/minimums")
+async def minimums_save(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    mins, errors = features.parse_minimums(form)
+    if errors:
+        return render(request, "minimums.html", status=422, mins=mins, fields=features.MIN_FIELDS,
+                      profiles=features.MIN_PROFILES, profile="solo", cond={}, metar="", parsed={}, result=None,
+                      saved=False, errors=errors)
+    with db() as c:
+        core.profile_set(c, {"minimums": json.dumps(mins)})
+    return back("/minimums", saved="1")
+
+
+# ----------------------------------------------------------------------------- costs
+
+@app.get("/costs")
+def costs_page(request: Request, saved: int = 0):
+    with db() as c:
+        prof, _, tf = settings_ctx(c)
+        rates = features.rates_get(prof)
+        prog = core.progress_private_asel(c)["tracked"]
+        remaining = max([need - have for _, have, need, unit in prog if unit == "hrs"] + [0])
+        cs = features.cost_summary(c, rates, remaining_hours=remaining)
+        tails = [r[0] for r in c.execute("SELECT DISTINCT aircraft FROM flights WHERE aircraft!='' "
+                                         "UNION SELECT ident FROM aircraft ORDER BY 1")]
+    return render(request, "costs.html", cs=cs, t=cs["t"], rates=rates, tails=tails, tf=tf, saved=bool(saved),
+                  chart=mapsvg.cost_bars(cs["months"]), errors=[])
+
+
+@app.post("/costs/rates")
+async def costs_rates(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    errors, ac = [], {}
+
+    def money(raw, label):
+        raw = (raw or "").strip().replace("$", "").replace(",", "")
+        if not raw:
+            return None
+        try:
+            v = round(float(raw), 2)
+            if v < 0 or v > 100000:
+                raise ValueError
+            return v
+        except ValueError:
+            errors.append(f"{label} must be a number.")
+            return None
+
+    instr = money(form.get("instructor"), "Instructor rate")
+    for key in form.keys():
+        if key.startswith("ac_"):
+            tail = key[3:].upper()[:12]
+            if re.fullmatch(r"[A-Z0-9\-]{1,12}", tail):
+                v = money(form.get(key), f"Rate for {tail}")
+                if v is not None:
+                    ac[tail] = v
+    if errors:
+        raise HTTPException(422, " ".join(errors))
+    with db() as c:
+        core.profile_set(c, {"rates": json.dumps({"instructor": instr, "aircraft": ac})})
+    return back("/costs", saved="1")
+
+
+# ----------------------------------------------------------------------------- expiry alerts
+
+@app.post("/settings/alerts")
+async def alerts_save(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    with db() as c:
+        prof = core.profile_get(c)
+        new, errors = features.parse_alert_settings(form, features.alert_settings(prof))
+        if errors:
+            return back("/settings", alert_error=" ".join(errors))
+        core.profile_set(c, {"alerts": json.dumps(new)})
+    return back("/settings", alerts="saved")
+
+
+@app.post("/settings/alerts/test")
+async def alerts_test(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    with db() as c:
+        st = features.alert_settings(core.profile_get(c))
+    if not st["url"]:
+        return back("/settings", alert_error="Save an alert address first.")
+    try:
+        features.send_alert(st, "Pilot Logbook test", "Expiry alerts from your Pilot Logbook will arrive here.")
+    except Exception as e:  # noqa: BLE001 - show the pilot what went wrong
+        return back("/settings", alert_error=f"The test alert didn't go through: {str(e)[:160]}")
+    return back("/settings", alerts="sent")
+
+
+def run_alerts(today=None, force=False):
+    """Send any reminders that are due. Returns how many went out."""
+    with db() as c:
+        prof = core.profile_get(c)
+        st = features.alert_settings(prof)
+        if not (st["enabled"] and st["url"]):
+            return 0
+        due = features.due_alerts(c, prof, st, today)
+        sent, err = 0, ""
+        for it in due[:20]:
+            title, msg = features.alert_text(it)
+            try:
+                features.send_alert(st, title, msg, high=it["days"] <= 7)
+            except Exception as e:  # noqa: BLE001
+                err = str(e)[:200]
+                break
+            features.mark_sent(c, it["keys"])
+            sent += 1
+        st["last_run"] = datetime.now().isoformat(timespec="minutes")
+        st["last_error"] = err
+        if sent:
+            st["last_sent"] = st["last_run"]
+        core.profile_set(c, {"alerts": json.dumps(st)})
+    return sent
+
+
+# ----------------------------------------------------------------------------- scheduled backups
+
+def autobackup_settings(prof):
+    try:
+        keep = max(1, min(int(prof.get("autobackup_keep") or 7), 60))
+    except ValueError:
+        keep = 7
+    freq = prof.get("autobackup") or "off"
+    return {"freq": freq if freq in ("off", "daily", "weekly") else "off", "keep": keep,
+            "documents": prof.get("autobackup_docs") == "1", "last_error": prof.get("autobackup_error") or ""}
+
+
+def list_backups():
+    out = []
+    for p in sorted(BACKUPS.glob("logbook-auto-*.zip"), reverse=True):
+        st = p.stat()
+        out.append({"name": p.name, "size": hangar.human_size(st.st_size), "bytes": st.st_size,
+                    "when": datetime.fromtimestamp(st.st_mtime)})
+    return out
+
+
+def _dir_size(d):
+    return sum(p.stat().st_size for p in d.iterdir() if p.is_file()) if d.exists() else 0
+
+
+def make_auto_backup(documents: bool, keep: int):
+    """Write a dated backup into the backups folder and prune the oldest. Raises ValueError when it can't."""
+    need = DB_PATH.stat().st_size + _dir_size(SCANS) + (_dir_size(DOCS) if documents else 0)
+    if shutil.disk_usage(DATA).free < need * 1.2 + 50 * 1024 * 1024:
+        raise ValueError("Not enough free space for a scheduled backup.")
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    part = BACKUPS / f".partial-{stamp}.zip"
+    try:
+        build_backup_zip(part, documents)
+        suffix = "" if documents else "-no-documents"
+        final, n = BACKUPS / f"logbook-auto-{stamp}{suffix}.zip", 1
+        while final.exists():
+            n += 1
+            final = BACKUPS / f"logbook-auto-{stamp}-{n}{suffix}.zip"
+        os.replace(part, final)
+    finally:
+        part.unlink(missing_ok=True)
+    for old in list_backups()[keep:]:
+        (BACKUPS / old["name"]).unlink(missing_ok=True)
+    return final
+
+
+def run_autobackup(now=None):
+    now = now or datetime.now()
+    with db() as c:
+        st = autobackup_settings(core.profile_get(c))
+    if st["freq"] == "off":
+        return None
+    latest = list_backups()
+    gap = timedelta(days=1 if st["freq"] == "daily" else 7) - timedelta(minutes=30)
+    if latest and now - latest[0]["when"] < gap:
+        return None
+    try:
+        made = make_auto_backup(st["documents"], st["keep"])
+        err = ""
+    except (ValueError, OSError) as e:
+        made, err = None, str(e)[:200]
+    with db() as c:
+        core.profile_set(c, {"autobackup_error": err})
+    return made
+
+
+@app.post("/data/autobackup")
+async def autobackup_save(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    freq = form.get("freq") if form.get("freq") in ("off", "daily", "weekly") else "off"
+    try:
+        keep = max(1, min(int(form.get("keep") or 7), 60))
+    except ValueError:
+        return back("/data", error="Keep must be a number from 1 to 60.")
+    with db() as c:
+        core.profile_set(c, {"autobackup": freq, "autobackup_keep": str(keep),
+                             "autobackup_docs": "1" if form.get("documents") else ""})
+    return back("/data", msg="Scheduled backup settings saved.")
+
+
+@app.post("/data/backups/now")
+async def autobackup_now(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    with db() as c:
+        st = autobackup_settings(core.profile_get(c))
+    try:
+        make_auto_backup(st["documents"], st["keep"])
+    except (ValueError, OSError) as e:
+        return back("/data", error=str(e)[:200])
+    return back("/data", msg="Backup saved on this device.")
+
+
+def _backup_path(name: str) -> Path:
+    if not re.fullmatch(r"logbook-auto-[0-9-]+(-no-documents)?\.zip", name or ""):
+        raise HTTPException(404, "That backup doesn't exist.")
+    p = BACKUPS / name
+    if not p.is_file():
+        raise HTTPException(404, "That backup doesn't exist.")
+    return p
+
+
+@app.get("/data/backups/{name}")
+def autobackup_download(name: str):
+    return FileResponse(_backup_path(name), media_type="application/zip", filename=name)
+
+
+@app.post("/data/backups/{name}/delete")
+async def autobackup_delete(request: Request, name: str):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    _backup_path(name).unlink(missing_ok=True)
+    return back("/data", msg="Backup deleted.")
+
+
+# ----------------------------------------------------------------------------- background jobs
+
+log = logging.getLogger("pilot-logbook")
+_stop = threading.Event()
+
+
+def run_jobs():
+    for job in (run_autobackup, run_alerts):
+        try:
+            job()
+        except Exception:  # noqa: BLE001 - one failing job must not stop the others
+            log.exception("background job %s failed", job.__name__)
+
+
+def _scheduler():
+    _stop.wait(20)  # let the app finish starting
+    while not _stop.is_set():
+        run_jobs()
+        _stop.wait(15 * 60)
+
+
+def start_scheduler():
+    if os.environ.get("HL_SCHEDULER", "1") != "0":
+        _stop.clear()
+        threading.Thread(target=_scheduler, name="scheduler", daemon=True).start()
 
 
 @app.exception_handler(StarletteHTTPException)

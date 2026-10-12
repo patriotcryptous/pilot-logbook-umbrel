@@ -34,6 +34,34 @@
     <div class="actions"><button class="btn danger" type="submit">Restore</button></div>
   </form>
 </div>
+<section class="panel spaced-top" aria-labelledby="ab-h">
+  <h2 id="ab-h">Scheduled backups</h2>
+  <p class="hint">Saves a backup zip on this device on a schedule and keeps the newest ones. It protects you from mistakes like deleting entries; it doesn't protect you if the device fails, so download a copy now and then too.</p>
+  <form method="post" action="/data/autobackup">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="formgrid">
+      <label class="field"><span>How often</span><select name="freq">{% for k, label in (("off", "Off"), ("daily", "Every day"), ("weekly", "Every week")) %}<option value="{{ k }}"{% if ab.freq == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Keep the newest</span><input name="keep" value="{{ ab.keep }}" inputmode="numeric"></label>
+    </div>
+    <label class="flag"><input type="checkbox" name="documents" value="1"{% if ab.documents %} checked{% endif %}>Include Document Hangar files (uses as much space as your Hangar, for every copy kept)</label>
+    <div class="actions"><button class="btn primary" type="submit">Save schedule</button>
+      <button class="btn" type="submit" formaction="/data/backups/now">Back up now</button></div>
+  </form>
+  {% if ab.last_error %}<p class="note bad">Last scheduled backup failed: {{ ab.last_error }}</p>{% endif %}
+  {% if backups %}
+  <table class="plain spaced-top"><thead><tr><th>Backup</th><th>Made</th><th class="n">Size</th><th></th></tr></thead>
+    <tbody>{% for b in backups %}<tr><td><a href="/data/backups/{{ b.name }}">{{ b.name }}</a></td><td>{{ b.when.strftime("%b %-d, %Y %H:%M") }}</td><td class="n">{{ b.size }}</td>
+      <td class="n"><form method="post" action="/data/backups/{{ b.name }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn" type="submit">Delete</button></form></td></tr>{% endfor %}</tbody></table>
+  {% else %}<p class="note">No saved backups yet.</p>{% endif %}
+</section>
+<form class="panel danger-zone spaced-top" method="post" action="/data/delete-all" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Delete all logbook entries</h2>
+  <p class="warn"><strong>Warning: this permanently deletes all {{ n }} flight{{ "s" if n != 1 }} and the import history, and cannot be undone.</strong></p>
+  <p class="hint">Aircraft, settings, paper scans and the Document Hangar are kept. Download a backup first if there is any chance you want these entries back.</p>
+  <label class="field"><span>Type <b>Delete-All-Logs</b> to confirm</span><input name="phrase" required autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+  <div class="actions"><button class="btn danger" type="submit">Delete all entries</button></div>
+</form>
 {% if imports %}
 <section class="panel spaced-top">
   <h2>Import history</h2>

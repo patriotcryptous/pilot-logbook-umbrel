@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Currency{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Currency forecast</h1>
+  <p class="sub">To carry passengers you need 3 takeoffs and landings in the last 90 days, and for night, 3 to a full stop at night (FAR 61.57). The bars show how many you'll still have each day if you don't fly again.</p></div></header>
+{% if not fc %}
+<div class="panel empty"><h2>No flights yet</h2><p>Log or import flights and your currency forecast appears here.</p></div>
+{% endif %}
+{% for k in fc %}
+<section class="panel">
+  <h2>{{ k.label }}</h2>
+  <div class="fc-grid">
+  {% for nm, title in (("day", "Day passenger currency"), ("night", "Night passenger currency")) %}
+    {% set x = k[nm] %}
+    <div class="fc">
+      <h3>{{ title }}</h3>
+      {% if x.current %}
+      <p class="fc-head ok"><b>Current through {{ x.through|pretty_date }}</b> <span class="muted">({{ x.days_left }} day{{ "s" if x.days_left != 1 }})</span></p>
+      <p class="muted small">Fly {{ "3 landings" if nm == "day" else "3 full-stop night landings" }} before {{ x.lapses|pretty_date }} to stay current without a gap.</p>
+      {% else %}
+      <p class="fc-head bad"><b>Not current</b> <span class="muted">({{ x.have }} of 3 in the last 90 days)</span></p>
+      <p class="muted small">You need {{ x.need }} more {{ "landing" if nm == "day" else "full-stop night landing" }}{{ "s" if x.need != 1 }}{% if nm == "night" %} between one hour after sunset and one hour before sunrise{% endif %} before carrying passengers{% if nm == "night" %} at night{% endif %}.</p>
+      {% endif %}
+      <div class="chart-scroll ltr">{{ x.chart }}</div>
+      {% if x.upcoming %}
+      <ul class="statuslist">{% for d in x.upcoming %}<li><span>{{ d.date|pretty_date }}</span><span class="muted small">{{ d.landings }} landing{{ "s" if d.landings != 1 }} from {{ d.flown|short_date }} drop{{ "s" if d.landings == 1 }} off</span></li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% if reminders %}
+<section class="panel">
+  <h2>Flight review and medical</h2>
+  <ul class="statuslist">{% for r in reminders %}<li><span>{{ r.label }}</span><span class="{{ 'ok' if r.ok else 'bad' }}"><span class="pill">{{ "Valid" if r.ok else "Expired" }}</span> <span class="muted small">through {{ r.through|pretty_date }}{% if r.ok %}, {{ r.left }} days{% endif %}</span></span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+<p class="note">Counts every landing you logged as if you were the sole manipulator, in the same category and class. Tailwheel currency needs full-stop landings, which this doesn't check. A reminder, not a legal determination. <a href="/settings#alerts">Get an alert</a> before it runs out.</p>
+{% endblock %}

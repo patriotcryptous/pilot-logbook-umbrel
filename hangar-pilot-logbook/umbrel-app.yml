@@ -2,7 +2,7 @@ manifestVersion: 1
 id: hangar-pilot-logbook
 category: files
 name: Pilot Logbook
-version: "1.2.3"
+version: "1.3.0"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
@@ -12,10 +12,13 @@ description: >-
   Import your ForeFlight logbook as a CSV, add flights by hand, and keep photos of your paper logbook pages filed by date. See your totals, 90-day landing currency, flight review and medical reminders, and your progress toward private pilot minimums.
 
 
-  Keep your insurance, certificates, POH, notes, photos and videos in the Document Hangar, with reminders before anything expires.
+  Track your instructor's endorsements and download a checkride packet. See when your passenger currency runs out, map the airports you've flown to, check the weather against your personal minimums, and track what your flying costs.
 
 
-  Export your whole logbook back out as a ForeFlight-format CSV, a printable PDF with page totals, or a full backup zip. No accounts, no cloud, no telemetry: your logbook is a legal record, and it stays yours.
+  Keep your insurance, certificates, POH, notes, photos and videos in the Document Hangar, with reminders before anything expires. Optional phone alerts (through ntfy) and scheduled backups.
+
+
+  Export your whole logbook back out as a ForeFlight-format CSV, a printable PDF with page totals, or a full backup zip. No accounts, no cloud, no telemetry: your logbook is a legal record, and it stays yours. The only outbound request is the expiry alert, and only if you turn it on.
 
 
   Currency and progress figures are reminders based on what you have logged. They are not a determination of legal currency or certificate eligibility.
@@ -30,6 +33,6 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  New app icon: a black Cessna on safety orange.
+  Endorsement log with a downloadable checkride packet, currency forecast, route map and landings by airport, personal minimums with a go/no-go check, fuel and cost tracking, expiry alerts to your phone, and scheduled backups. Also: a towered full-stop landings field and a way to delete all logbook entries.
 submitter: patriotcryptous
 submission: https://github.com/patriotcryptous/pilot-logbook-umbrel
