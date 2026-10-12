@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Preflight Risk Check{% endblock %}
+{% macro tdate(x) %}{{ x.strftime("%-I:%M %p") if x else "-" }}{% endmacro %}
+{% block content %}
+<header class="page-head">
+  <div><h1>Preflight Risk Check</h1>
+    <p class="sub">Live weather against your personal minimums, a PAVE risk score and the checklists to go with it. It helps you decide; the decision is yours.</p></div>
+  <a class="btn" href="/preflight/minimums">{{ icon("sliders") }}Update minimums</a>
+</header>
+{% if saved %}<div class="notice" role="status">Saved to your preflight history.</div>{% endif %}
+
+<form method="get" action="/preflight" class="pf">
+  <input type="hidden" name="check" value="1">
+  <input type="hidden" name="risk_for" value="{{ risk_key if checked_wx else v.airport + '|wx' }}">
+  <input type="hidden" name="risk_submitted" value="1">
+  <section class="panel">
+    <h2>Your flight</h2>
+    <div class="formgrid pf-grid">
+      <label class="field"><span>Airport</span><input name="airport" value="{{ v.airport }}" placeholder="I67 or KLUK" maxlength="5" autocapitalize="characters" spellcheck="false" required></label>
+      <label class="field"><span>Minimums for</span><select name="profile">{% for k, label in profiles %}<option value="{{ k }}"{% if k == v.profile %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Aircraft</span><select name="tail"><option value="">Any</option>{% for t in tails %}<option{% if t == v.tail %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Runway</span><input name="runway" value="{{ v.runway }}" placeholder="Best for the wind" maxlength="4" autocapitalize="characters"></label>
+    </div>
+    <label class="flag"><input type="checkbox" name="night" value="1"{% if v.night %} checked{% endif %}>Night flight</label>
+    <details class="more"{% if v.flight_h or v.fob or v.tod %} open{% endif %}><summary>Fuel and performance (optional)</summary>
+      <div class="formgrid">
+        <label class="field"><span>Flight time (h)</span><input name="flight_h" value="{{ '%g'|format(v.flight_h) if v.flight_h else '' }}" inputmode="decimal" placeholder="1.5"></label>
+        <label class="field"><span>Fuel on board (gal)</span><input name="fob" value="{{ '%g'|format(v.fob) if v.fob else '' }}" inputmode="decimal"></label>
+        <label class="field"><span>Fuel burn (gal/hr)</span><input name="gph" value="{{ '%g'|format(v.gph) if v.gph else '' }}" inputmode="decimal" placeholder="{{ gph_hint or '8.5' }}"><small>{% if gph_hint %}Your logged average is {{ gph_hint }}.{% else %}Blank uses your logged average.{% endif %}</small></label>
+        <label class="field"><span>Takeoff distance over 50 ft (ft)</span><input name="tod" value="{{ '%g'|format(v.tod) if v.tod else '' }}" inputmode="numeric"><small>From the POH for today's weight and conditions.</small></label>
+      </div>
+    </details>
+    <details class="more"{% if v.metar or v.wind is not none or v.visibility is not none or v.ceiling is not none %} open{% endif %}><summary>Enter the weather yourself</summary>
+      <p class="hint">For when there's no internet, or to check a forecast. Typed numbers win over the live weather.</p>
+      <div class="formgrid">
+        <label class="field span-all"><span>METAR or TAF line</span><input name="metar" value="{{ v.metar }}" placeholder="KLUK 121853Z 24012G20KT 10SM BKN045 18/07 A3001" spellcheck="false"></label>
+        <label class="field"><span>Wind from (°)</span><input name="wind_dir" value="{{ v.wind_dir }}" placeholder="240 or VRB" maxlength="3"></label>
+        <label class="field"><span>Wind (kt)</span><input name="wind" value="{{ '%g'|format(v.wind) if v.wind is not none else '' }}" inputmode="numeric"></label>
+        <label class="field"><span>Gusts (kt)</span><input name="gust" value="{{ '%g'|format(v.gust) if v.gust is not none else '' }}" inputmode="numeric"></label>
+        <label class="field"><span>Visibility (SM)</span><input name="visibility" value="{{ '%g'|format(v.visibility) if v.visibility is not none else '' }}" inputmode="decimal"></label>
+        <label class="field"><span>Ceiling (ft AGL)</span><input name="ceiling" value="{{ '%g'|format(v.ceiling) if v.ceiling is not none else '' }}" inputmode="numeric"></label>
+      </div>
+    </details>
+    <div class="actions"><button class="btn primary" type="submit">{{ icon("shield") }}Check</button>{% if checked_wx %}<a class="btn" href="/preflight">Start over</a>{% endif %}</div>
+  </section>
+
+  {% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+
+  {% if overall %}
+  <section class="verdict-hero {{ overall[0] }}" aria-live="polite">
+    <div><span class="lbl">Overall</span><b>{{ overall[1] }}</b></div>
+    <div><span class="lbl">Weather vs your {{ dict(profiles)[v.profile]|lower }} minimums</span><b>{{ "Within" if result.verdict == "go" else "Outside" if result.verdict == "nogo" else "Not checked" }}</b></div>
+    <div><span class="lbl">PAVE risk score</span><b>{{ risk.total }}{% if risk.nogo %} + no-go item{% endif %} &middot; {{ risk.level|capitalize }}</b></div>
+  </section>
+  {% endif %}
+
+  {% if checked_wx and ap %}
+  <div class="two pf-two">
+    <section class="panel">
+      <h2>Weather at {{ v.airport }}</h2>
+      {% set m = wx.metar %}
+      {% if wx.error %}<p class="notice err">{{ wx.error }}</p>{% endif %}
+      {% if m %}
+      <p class="hint">
+        {% if wx.from_nearby %}No weather is reported at {{ v.airport }}, so this is <b>{{ m.station }}</b>, {{ "%.0f"|format(wx.distance) }} nm away.{% else %}<b>{{ m.station }}</b> {{ m.name }}.{% endif %}
+        {% if m.age_min is defined %} Observed {{ m.age_min }} min ago{% if m.age_min > 75 %} <span class="bad">(old)</span>{% endif %}.{% endif %}
+        {% if m.category %}<span class="cat cat-{{ m.category|lower }}">{{ m.category }}</span>{% endif %}
+      </p>
+      <div class="wx-tiles">
+        <div><span class="lbl">Wind</span><b>{% if m.wspd == 0 %}Calm{% else %}{{ "Variable" if m.wdir == "VRB" else "%03d°"|format(m.wdir|int) }} {{ m.wspd }}{% if m.gust %}G{{ m.gust }}{% endif %} kt{% endif %}</b></div>
+        <div><span class="lbl">Visibility</span><b>{{ m.visib_text or "-" }} SM</b></div>
+        <div><span class="lbl">Ceiling</span><b>{{ "{:,}".format(m.ceiling) ~ " ft" if m.ceiling is not none else "None" }}</b></div>
+        <div><span class="lbl">Temp / dew point</span><b>{{ m.temp|round|int if m.temp is not none else "-" }}° / {{ m.dewp|round|int if m.dewp is not none else "-" }}°C</b></div>
+        <div><span class="lbl">Altimeter</span><b>{{ "%.2f"|format(m.altim) if m.altim else "-" }}</b></div>
+        <div><span class="lbl">Density altitude</span><b>{{ "{:,}".format(da.density_alt) ~ " ft" if da else "-" }}</b>{% if da %}<small class="muted">field {{ "{:,}".format(ap.elev|int) }} ft</small>{% endif %}</div>
+      </div>
+      <pre class="raw">{{ m.raw }}</pre>
+      {% elif wx.manual %}<p class="hint">Using the weather you entered.</p>
+      {% elif not wx.error %}<p class="hint">No weather report within 30 nm. Enter the weather yourself above.</p>{% endif %}
+      {% if wx.taf %}<h3 class="subhead">Forecast {% if wx.taf.distance %}<span class="muted small">({{ wx.taf.station }}, {{ "%.0f"|format(wx.taf.distance) }} nm away)</span>{% endif %}</h3><pre class="raw">{{ wx.taf.raw }}</pre>{% endif %}
+      <p class="note">From the NOAA Aviation Weather Center. Get an official briefing before you fly.</p>
+    </section>
+    <section class="panel">
+      <h2>Runways</h2>
+      {% if ends %}
+      <table class="plain rwy">
+        <thead><tr><th>Runway</th><th class="n">Length</th><th class="n">Headwind</th><th class="n">Crosswind</th></tr></thead>
+        <tbody>{% for e in ends %}<tr class="{{ 'chosen' if chosen and e.ident == chosen.ident }}">
+          <td><b>{{ e.ident }}</b>{% if e.best %} <span class="badge ok-go">Best</span>{% endif %}<div class="muted small">{{ e.surface }}{% if e.lighted %}, lighted{% endif %}</div></td>
+          <td class="n">{{ "{:,}".format(e.length) }} ft</td>
+          <td class="n{{ ' bad' if e.head < 0 }}">{{ "%.0f"|format(e.head|abs) }} kt{% if e.head < 0 %} tail{% endif %}</td>
+          <td class="n">{{ "%.0f"|format(e.cross) }} kt</td></tr>{% endfor %}</tbody>
+      </table>
+      <p class="note">Uses the gust speed when there is one. Runway data from OurAirports; check the chart supplement for closures and displaced thresholds.</p>
+      {% else %}<p class="hint">No runway data for {{ v.airport }}. Type the runway above for a crosswind check.</p>{% endif %}
+    </section>
+  </div>
+  {% endif %}
+
+  {% if result %}
+  <section class="panel">
+    <h2>Against your {{ dict(profiles)[v.profile]|lower }} minimums{% if chosen %} on runway {{ chosen.ident }}{% endif %}</h2>
+    <table class="plain"><thead><tr><th>Item</th><th class="n">Now</th><th class="n">Your limit</th><th class="n">Result</th></tr></thead>
+      <tbody>{% for l in result.lines %}<tr><td>{{ l.label }}</td>
+        <td class="n">{% if l.actual is none %}<span class="muted">-</span>{% elif l.actual is number %}{{ "{:,}".format(l.actual|int) if l.actual >= 1000 else "%g"|format(l.actual) }} {{ l.unit }}{% else %}{{ l.actual }}{% endif %}</td>
+        <td class="n">{% if l.limit is none %}<a class="muted" href="/preflight/minimums">set</a>{% elif l.limit is number %}{{ "{:,}".format(l.limit|int) if l.limit >= 1000 else "%g"|format(l.limit) }} {{ l.unit }}{% else %}{{ l.limit }}{% endif %}</td>
+        <td class="n"><span class="badge {{ 'ok-go' if l.state == 'go' else 'expired' if l.state == 'nogo' else 'ok' }}">{{ "Go" if l.state == "go" else "No-go" if l.state == "nogo" else "Not checked" }}</span></td></tr>{% endfor %}</tbody></table>
+  </section>
+  {% endif %}
+
+  <div class="two pf-two">
+    <section class="panel">
+      <h2>From your logbook</h2>
+      <ul class="facts">{% for f in facts %}<li class="{{ f.state }}"><span class="dot-s" aria-hidden="true"></span><span>{{ f.label }}</span><span class="muted small">{{ f.text }}</span></li>{% endfor %}</ul>
+    </section>
+    <section class="panel">
+      {% if sun %}
+      <h2>Daylight at {{ v.airport }} today</h2>
+      <ul class="statuslist">
+        <li><span>Sunrise</span><span class="n">{{ tdate(sun.sunrise) }}</span></li>
+        <li><span>Sunset (position lights on, 91.209)</span><span class="n">{{ tdate(sun.sunset) }}</span></li>
+        <li><span>End of civil twilight (night begins, 1.1)</span><span class="n">{{ tdate(sun.civil_dusk) }}</span></li>
+        <li><span>Night passenger currency counts after (61.57(b))</span><span class="n">{{ tdate(sun.night_currency) }}</span></li>
+      </ul>
+      <p class="note">Local time ({{ sun.tz }}).</p>
+      {% else %}<h2>Daylight</h2><p class="hint">Enter an airport to see sunrise, sunset and when night begins.</p>{% endif %}
+      {% if not fuel and v.flight_h and v.fob %}<h3 class="subhead">Fuel</h3><p class="muted">Enter your fuel burn to check the fuel.</p>{% endif %}
+      {% if fuel %}
+      <h3 class="subhead">Fuel</h3>
+      <p class="{{ 'ok' if fuel.legal and fuel.hour_left else 'warn' if fuel.legal else 'bad' }}">
+        {% if not fuel.legal %}Not enough: you need {{ fuel.required }} gal including the {{ (fuel.reserve_h * 60)|int }}-minute reserve.
+        {% else %}{{ fuel.required }} gal covers the trip and the {{ (fuel.reserve_h * 60)|int }}-minute reserve; you'd land with about {{ "%.1f"|format(fuel.left_h) }} h of fuel.{% endif %}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="panel pave">
+    <div class="pave-head">
+      <div><h2>PAVE risk assessment</h2><p class="hint">Tick everything that's true for this flight. Items marked <span class="auto-tag">auto</span> were ticked from the weather, your logbook or your fuel numbers; untick any that don't apply.</p></div>
+      <div class="score {{ risk.level }}"><b>{{ risk.total }}</b><span>{{ risk.level|capitalize }}</span></div>
+    </div>
+    <p class="score-text {{ risk.level }}">{% if risk.nogo %}<b>No-go:</b> {% for k, g, label, p in risk_items if k in risk.nogo %}{{ label }}{{ "; " if not loop.last }}{% endfor %}. {% endif %}{{ risk.text }}</p>
+    <div class="pave-grid">
+      {% for g, title, hint in risk_groups %}
+      <fieldset><legend><b>{{ title[0] }}</b>{{ title[1:] }}</legend><p class="muted small">{{ hint }}</p>
+        {% for k, grp, label, pts in risk_items if grp == g %}
+        <label class="risk"><input type="checkbox" name="r_{{ k }}" value="1"{% if k in checked %} checked{% endif %}>
+          <span>{{ label }}{% if k in auto %} <span class="auto-tag" title="{{ auto[k] }}">auto</span><small class="muted">{{ auto[k] }}</small>{% endif %}</span>
+          <span class="pts">{{ "No-go" if pts == 99 else "+" ~ pts }}</span></label>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+    </div>
+    <p class="note">0 to 9 low, 10 to 19 elevated, 20 or more high. Alcohol and fuel below the legal reserve are automatic no-gos (91.17, 91.151). Adapted from FAA risk management guidance; talk your numbers through with your instructor.</p>
+    <div class="actions"><button class="btn primary" type="submit">Update score</button></div>
+  </section>
+</form>
+
+<form method="post" action="/preflight/save" class="save-check">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% for k in ("airport", "profile", "tail", "runway", "metar", "wind_dir") %}<input type="hidden" name="{{ k }}" value="{{ v[k] or '' }}">{% endfor %}
+  {% for k in ("flight_h", "fob", "gph", "tod", "wind", "gust", "visibility", "ceiling") %}{% if v[k] is not none %}<input type="hidden" name="{{ k }}" value="{{ '%g'|format(v[k]) }}">{% endif %}{% endfor %}
+  {% if v.night %}<input type="hidden" name="night" value="1">{% endif %}
+  <input type="hidden" name="risk_submitted" value="1"><input type="hidden" name="risk_for" value="{{ v.airport }}|wx">
+  {% for k in checked %}<input type="hidden" name="r_{{ k }}" value="1">{% endfor %}
+  <button class="btn" type="submit"{% if not checked_wx %} disabled{% endif %}>{{ icon("download") }}Save this check to your history</button>
+  {% if not checked_wx %}<span class="muted small">Run a check first.</span>{% endif %}
+</form>
+
+<section class="panel spaced-top">
+  <h2>Before you go</h2>
+  <div class="check-grid">
+    {% for title, items in checklists %}
+    <div><h3>{{ title }}</h3><ul class="ticks">{% for it in items %}<li><label><input type="checkbox"> {{ it }}</label></li>{% endfor %}</ul></div>
+    {% endfor %}
+  </div>
+  <p class="links">{% for label, url in links %}<a href="{{ url }}" target="_blank" rel="noreferrer">{{ label }}</a>{% endfor %}</p>
+</section>
+
+{% if history %}
+<section class="panel">
+  <h2>Recent checks</h2>
+  <div class="scrollx"><table class="plain"><thead><tr><th>When</th><th>Airport</th><th>Minimums</th><th class="n">Weather</th><th class="n">Risk</th><th></th></tr></thead>
+    <tbody>{% for h in history %}<tr><td>{{ h.created_at.replace("T", " ") }}</td><td><b>{{ h.airport }}</b>{% if h.station and h.station != h.airport %} <span class="muted small">via {{ h.station }}</span>{% endif %}</td>
+      <td>{{ dict(profiles).get(h.profile, h.profile) }}</td>
+      <td class="n"><span class="badge {{ 'ok-go' if h.verdict == 'go' else 'expired' if h.verdict == 'nogo' else 'ok' }}">{{ "Go" if h.verdict == "go" else "No-go" if h.verdict == "nogo" else "Not checked" }}</span></td>
+      <td class="n"><span class="badge {{ 'ok-go' if h.risk_level == 'low' else 'soon' if h.risk_level == 'caution' else 'expired' }}">{{ h.risk_total }} {{ h.risk_level }}</span></td>
+      <td class="n"><form method="post" action="/preflight/history/{{ h.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn" type="submit">Delete</button></form></td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+{% endblock %}

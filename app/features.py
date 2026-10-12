@@ -203,7 +203,8 @@ def _airports():
     with gzip.open(GEO / "airports.csv.gz", "rt", encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
             rec = {"icao": r["icao"], "lid": r["lid"], "iata": r["iata"], "name": r["name"], "city": r["city"],
-                   "subd": r["subd"], "country": r["country"], "lat": float(r["lat"]), "lon": float(r["lon"])}
+                   "subd": r["subd"], "country": r["country"], "lat": float(r["lat"]), "lon": float(r["lon"]),
+                   "elev": float(r.get("elev") or 0), "tz": r.get("tz") or ""}
             by_icao[r["icao"]] = rec
             if r["lid"]:
                 by_lid.setdefault(r["lid"], rec)
@@ -404,7 +405,7 @@ def check_minimums(mins, cond):
     spread = (gust - wind) if gust is not None and wind is not None else (0 if wind is not None else None)
     add("Gust spread", spread, mins.get("gust_spread"),
         None if spread is None or mins.get("gust_spread") is None else spread <= mins["gust_spread"], "kt")
-    hdg = runway_heading(cond.get("runway_id"))
+    hdg = cond.get("runway_hdg") if cond.get("runway_hdg") is not None else runway_heading(cond.get("runway_id"))
     head, xw = wind_components(cond.get("wind_dir"), max(wind or 0, gust or 0) if wind is not None else None, hdg)
     add("Crosswind" + (" (using gusts)" if gust else ""), xw, mins.get("crosswind"),
         None if xw is None or mins.get("crosswind") is None else xw <= mins["crosswind"], "kt")

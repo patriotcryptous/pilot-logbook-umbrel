@@ -1,8 +1,8 @@
 """Pilot Logbook - self-hosted, single-pilot web app for umbrelOS.
 
 No accounts (umbrelOS's app proxy already sits in front), no telemetry. Pages are plain HTML except the
-Airports route map, which runs bundled Leaflet over OpenStreetMap/OpenTopoMap tiles. The only request the
-server itself makes is the optional expiry alert, sent to the address the pilot sets in Settings. Pages are rendered on the server, charts are inline SVG.
+Airports route map, which runs bundled Leaflet over OpenStreetMap/OpenTopoMap tiles. The server itself only
+reaches out for the Preflight Risk Check weather (aviationweather.gov) and the optional expiry alert. Pages are rendered on the server, charts are inline SVG.
 """
 import hmac
 import json
@@ -37,6 +37,7 @@ import hangar
 import logbook_core as core
 import mapsvg
 import pdfexport
+import preflight
 
 BASE = Path(__file__).parent
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
@@ -100,6 +101,7 @@ def db():
 def ensure_all(c):
     core.ensure_schema(c)
     features.ensure_schema(c)
+    preflight.ensure_schema(c)
 
 
 with db() as _c:
@@ -143,7 +145,7 @@ NAV = [("dash", "/", "Dashboard", "grid"), ("logbook", "/logbook", "Logbook", "b
        ("add", "/flights/new", "Add flight", "plus"), ("progress", "/progress", "Progress", "target"),
        ("training", "/training", "Endorsements", "award"), ("currency", "/currency", "Currency", "clock"),
        ("airports", "/airports", "Airports", "map"), ("costs", "/costs", "Costs", "dollar"),
-       ("minimums", "/minimums", "Minimums", "shield"),
+       ("preflight", "/preflight", "Preflight Risk Check", "shield"),
        ("hangar", "/hangar", "Document Hangar", "folder"), ("scans", "/scans", "Paper scans", "image"), ("data", "/data", "Import & backup", "database"),
        ("settings", "/settings", "Settings", "sliders")]
 MORE_KEYS = [k for k, *_ in NAV[4:]] + ["more"]
@@ -1266,7 +1268,7 @@ def airports_page(request: Request, year: str = ""):
                   map_json=features.map_payload(stats))
 
 
-# ----------------------------------------------------------------------------- personal minimums
+# ----------------------------------------------------------------------------- preflight risk check
 
 def _f(v):
     try:
@@ -1275,46 +1277,169 @@ def _f(v):
         return None
 
 
+def home_airport(c):
+    r = c.execute("SELECT upper(to_apt), COUNT(*) n FROM flights WHERE to_apt!='' GROUP BY 1 ORDER BY n DESC LIMIT 1").fetchone()
+    return r[0] if r else ""
+
+
+def build_preflight(c, q):
+    """Everything the Preflight Risk Check page shows, from the query (or form) values."""
+    prof, _, _ = settings_ctx(c)
+    mins = features.minimums_get(prof)
+    profile = q.get("profile") if q.get("profile") in mins else "solo"
+    code = (q.get("airport") or home_airport(c) or "").strip().upper()[:5]
+    tails = [r[0] for r in c.execute("SELECT DISTINCT aircraft FROM flights WHERE aircraft!='' ORDER BY 1")]
+    tail = q.get("tail") if q.get("tail") in tails else ""
+    night = bool(q.get("night"))
+    rates = features.cost_summary(c, features.rates_get(prof))["t"]
+    v = {"airport": code, "profile": profile, "tail": tail, "night": night, "runway": (q.get("runway") or "").strip().upper()[:4],
+         "flight_h": _f(q.get("flight_h")), "fob": _f(q.get("fob")), "gph": _f(q.get("gph")), "tod": _f(q.get("tod")),
+         "metar": (q.get("metar") or "")[:600], "wind_dir": (q.get("wind_dir") or "").strip().upper()[:3],
+         "wind": _f(q.get("wind")), "gust": _f(q.get("gust")), "visibility": _f(q.get("visibility")),
+         "ceiling": _f(q.get("ceiling"))}
+    ctx = {"v": v, "mins": mins[profile], "all_mins": mins, "profiles": features.MIN_PROFILES, "tails": tails,
+           "gph_hint": round(rates["gph"], 1) if rates["gph"] else None, "checked_wx": bool(q.get("check")),
+           "night": night, "error": ""}
+    ap = features.resolve_airport(code) if code else None
+    ctx["ap"] = ap
+    reminders = reminders_for(c, prof)
+    ctx["facts"] = preflight.readiness(c, prof, reminders, tail, code or None)
+    ctx["fuel"] = preflight.fuel_check(v["flight_h"], v["fob"], v["gph"] or ctx["gph_hint"], night)
+    ctx["checklists"], ctx["links"] = preflight.CHECKLISTS, preflight.LINKS
+    if ctx["checked_wx"]:
+        if code and not ap:
+            ctx["error"] = f"Couldn't find an airport called {code}. Try the ICAO code (KLUK) or the FAA identifier (I67)."
+        manual = any(v[k] not in (None, "") for k in ("metar", "wind", "gust", "visibility", "ceiling", "wind_dir"))
+        wx = {"metar": None, "taf": None, "from_nearby": False, "distance": 0.0, "error": ""}
+        if ap and not v["metar"]:
+            wx = preflight.weather_for(ap)
+        cond = {}
+        m = wx.get("metar")
+        if m:
+            cond = {"wind_dir": "VRB" if m["wdir"] == "VRB" else (str(int(m["wdir"])) if m["wdir"] is not None else ""),
+                    "wind": m["wspd"], "gust": m["gust"], "visibility": m["visib"], "ceiling": m["ceiling"],
+                    "no_ceiling": m["ceiling"] is None}
+        if v["metar"]:
+            p = features.parse_metar(v["metar"])
+            cond = {"wind_dir": p.get("wind_dir", ""), "wind": p.get("wind"), "gust": p.get("gust"),
+                    "visibility": p.get("visibility"), "ceiling": p.get("ceiling"), "no_ceiling": bool(p.get("no_ceiling"))}
+            wx["manual"] = True
+        for k in ("wind", "gust", "visibility", "ceiling"):
+            if v[k] is not None:
+                cond[k] = v[k]
+                if k == "ceiling":
+                    cond["no_ceiling"] = False
+        if v["wind_dir"] and (v["wind_dir"] == "VRB" or v["wind_dir"].isdigit()):
+            cond["wind_dir"] = v["wind_dir"]
+        wx["manual"] = wx.get("manual") or (manual and not v["metar"] and not m)
+        ends = preflight.runway_winds(preflight.runways_for(ap), cond.get("wind_dir") or None,
+                                      cond.get("wind"), cond.get("gust")) if ap else []
+        chosen = next((e for e in ends if e["ident"].upper() == v["runway"]), None) if v["runway"] else None
+        chosen = chosen or next((e for e in ends if e.get("best")), None)
+        if chosen:
+            cond.update(runway_id=chosen["ident"], runway_hdg=chosen["heading"], runway_length=chosen["length"])
+        elif v["runway"]:
+            cond["runway_id"] = v["runway"]
+        cond["night"] = night
+        ctx.update(wx=wx, ends=ends, chosen=chosen, cond=cond,
+                   result=features.check_minimums(mins[profile], cond) if cond else None)
+        if m and ap:
+            ctx["da"] = preflight.density_altitude(ap["elev"], m["temp"], m["altim"])
+        ctx["crosswind"] = ctx["result"]["crosswind"] if ctx.get("result") else None
+        ctx["runway_len"] = chosen["length"] if chosen else None
+        ctx["tod"] = int(v["tod"]) if v["tod"] else None
+    if ap:
+        try:
+            ctx["sun"] = preflight.sun_times(ap)
+        except Exception:  # noqa: BLE001 - a bad time zone name shouldn't break the page
+            ctx["sun"] = None
+    auto = preflight.auto_risks(ctx)
+    ctx["risk_key"] = code + ("|wx" if ctx["checked_wx"] else "")
+    if q.get("risk_submitted") and q.get("risk_for") == ctx["risk_key"]:
+        checked = {k for k, *_ in preflight.RISK_ITEMS if q.get("r_" + k)}
+    else:
+        checked = set(auto) | {k for k, *_ in preflight.RISK_ITEMS if q.get("r_" + k)}
+    ctx.update(auto=auto, checked=checked, risk=preflight.score_risks(checked),
+               risk_items=preflight.RISK_ITEMS, risk_groups=preflight.RISK_GROUPS)
+    res = ctx.get("result")
+    if res and res["checked"]:
+        if res["verdict"] == "nogo" or ctx["risk"]["level"] == "high":
+            ctx["overall"] = ("nogo", "No-go as planned")
+        elif ctx["risk"]["level"] == "caution":
+            ctx["overall"] = ("caution", "Go only with the risks lowered")
+        else:
+            ctx["overall"] = ("go", "Within your minimums, low risk")
+    return ctx
+
+
 @app.get("/minimums")
-def minimums_page(request: Request, saved: int = 0, profile: str = "solo", metar: str = "", wind_dir: str = "",
-                  wind: str = "", gust: str = "", visibility: str = "", ceiling: str = "", runway_id: str = "",
-                  runway_length: str = "", night: str = "", check: int = 0):
+def minimums_redirect():
+    return RedirectResponse("/preflight", status_code=301)
+
+
+@app.get("/preflight")
+def preflight_page(request: Request):
+    q = dict(request.query_params)
+    with db() as c:
+        ctx = build_preflight(c, q)
+        history = [dict(r) for r in c.execute("SELECT * FROM preflight_checks ORDER BY id DESC LIMIT 8")]
+    return render(request, "preflight.html", history=history, saved=q.get("saved") == "1", **ctx)
+
+
+@app.post("/preflight/save")
+async def preflight_save(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    q = {k: v for k, v in form.items() if k != "csrf" and isinstance(v, str)}
+    q["check"] = "1"
+    with db() as c:
+        ctx = build_preflight(c, q)
+        res = ctx.get("result")
+        wx = (ctx.get("wx") or {}).get("metar") or {}
+        summary = "; ".join(f'{x["label"]} {"go" if x["state"] == "go" else "no-go"}' for x in (res or {}).get("lines", [])
+                            if x["state"] != "skip")
+        details = {"metar": wx.get("raw", ""), "runway": (ctx.get("chosen") or {}).get("ident", ""),
+                   "risks": sorted(ctx["checked"]), "overall": (ctx.get("overall") or ("", ""))[1]}
+        c.execute("INSERT INTO preflight_checks(created_at, airport, station, profile, verdict, risk_total, risk_level, "
+                  "summary, details_json) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (datetime.now().isoformat(timespec="minutes"), ctx["v"]["airport"], wx.get("station", ""),
+                   ctx["v"]["profile"], (res or {}).get("verdict", "skip"), ctx["risk"]["total"], ctx["risk"]["level"],
+                   summary, json.dumps(details)))
+        c.commit()
+    keep = {k: v for k, v in q.items() if v}
+    keep["saved"] = "1"
+    return RedirectResponse("/preflight?" + urlencode(keep), status_code=303)
+
+
+@app.post("/preflight/history/{hid}/delete")
+async def preflight_history_delete(request: Request, hid: int):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    with db() as c:
+        c.execute("DELETE FROM preflight_checks WHERE id=?", (hid,))
+        c.commit()
+    return back("/preflight")
+
+
+@app.get("/preflight/minimums")
+def minimums_page(request: Request, saved: int = 0):
     with db() as c:
         prof, _, _ = settings_ctx(c)
-    mins = features.minimums_get(prof)
-    profile = profile if profile in mins else "solo"
-    cond = {"wind_dir": wind_dir.strip().upper()[:3], "wind": _f(wind), "gust": _f(gust), "visibility": _f(visibility),
-            "ceiling": _f(ceiling), "runway_id": runway_id.strip()[:4], "runway_length": _f(runway_length),
-            "night": bool(night)}
-    parsed = {}
-    if metar.strip():
-        parsed = features.parse_metar(metar[:600])
-        for k in ("wind", "gust", "visibility", "ceiling"):
-            if cond[k] is None and parsed.get(k) is not None:
-                cond[k] = parsed[k]
-        if not cond["wind_dir"] and parsed.get("wind_dir"):
-            cond["wind_dir"] = parsed["wind_dir"]
-        if parsed.get("no_ceiling") and cond["ceiling"] is None:
-            cond["no_ceiling"] = True
-    if cond["wind_dir"] and cond["wind_dir"] != "VRB" and not cond["wind_dir"].isdigit():
-        cond["wind_dir"] = ""
-    result = features.check_minimums(mins[profile], cond) if check else None
-    return render(request, "minimums.html", mins=mins, fields=features.MIN_FIELDS, profiles=features.MIN_PROFILES,
-                  profile=profile, cond=cond, metar=metar[:600], parsed=parsed, result=result, saved=bool(saved), errors=[])
+    return render(request, "minimums.html", mins=features.minimums_get(prof), fields=features.MIN_FIELDS,
+                  profiles=features.MIN_PROFILES, saved=bool(saved), errors=[])
 
 
-@app.post("/minimums")
+@app.post("/preflight/minimums")
 async def minimums_save(request: Request):
     form = await request.form()
     check_csrf(request, form.get("csrf", ""))
     mins, errors = features.parse_minimums(form)
     if errors:
         return render(request, "minimums.html", status=422, mins=mins, fields=features.MIN_FIELDS,
-                      profiles=features.MIN_PROFILES, profile="solo", cond={}, metar="", parsed={}, result=None,
-                      saved=False, errors=errors)
+                      profiles=features.MIN_PROFILES, saved=False, errors=errors)
     with db() as c:
         core.profile_set(c, {"minimums": json.dumps(mins)})
-    return back("/minimums", saved="1")
+    return back("/preflight/minimums", saved="1")
 
 
 # ----------------------------------------------------------------------------- costs

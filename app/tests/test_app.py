@@ -651,14 +651,94 @@ def test_personal_minimums(client):
     assert features.runway_heading("05L") == 50 and features.runway_heading("360") == 0
     h, x = features.wind_components("240", 20, 270)
     assert x == 10.0 and h == 17.3
-    r = client.post("/minimums", data={"csrf": token(client), "solo_ceiling": "3000", "solo_visibility": "5",
-                                        "solo_wind": "15", "solo_crosswind": "8", "solo_gust_spread": "5"})
+    assert client.get("/minimums").headers["location"] == "/preflight"
+    r = client.post("/preflight/minimums", data={"csrf": token(client), "solo_ceiling": "3000", "solo_visibility": "5",
+                                                  "solo_wind": "15", "solo_crosswind": "8", "solo_gust_spread": "5"})
     assert r.status_code == 303
-    page = client.get("/minimums?check=1&profile=solo&runway_id=27&metar=KLUK+121853Z+24012G20KT+10SM+BKN045").text
-    assert "Outside your minimums" in page and "No-go" in page
-    ok = client.get("/minimums?check=1&profile=solo&runway_id=24&metar=KLUK+121853Z+24005KT+10SM+CLR").text
-    assert "Within your minimums" in ok
-    assert client.post("/minimums", data={"csrf": token(client), "solo_wind": "lots"}).status_code == 422
+    assert 'value="3000"' in client.get("/preflight/minimums").text
+    # typed-in METAR works with no internet
+    page = client.get("/preflight?check=1&profile=solo&airport=ZZZZ9&runway=27&metar=KLUK+121853Z+24012G20KT+10SM+BKN045").text
+    assert "Couldn" in page and "No-go" in page
+    assert client.post("/preflight/minimums", data={"csrf": token(client), "solo_wind": "lots"}).status_code == 422
+
+
+def _fake_awc(monkeypatch, metars, tafs=()):
+    import preflight
+    preflight._cache.clear()
+
+    def fake(path, params, timeout=8):
+        rows = metars if path == "metar" else list(tafs)
+        if "ids" in params:
+            return [r for r in rows if r["icaoId"] == params["ids"]]
+        return rows
+    monkeypatch.setattr(preflight, "_get", fake)
+
+
+def test_preflight_live_weather_and_risk(client, monkeypatch):
+    import time as _t
+    import preflight
+    obs = int(_t.time()) - 600
+    _fake_awc(monkeypatch, [{"icaoId": "KLUK", "obsTime": obs, "wdir": 240, "wspd": 12, "wgst": 20, "visib": "10+",
+                             "temp": 30, "dewp": 10, "altim": 1013.2, "fltCat": "MVFR", "lat": 39.1, "lon": -84.42,
+                             "rawOb": "KLUK 121553Z 24012G20KT 10SM BKN025 30/10 A2992", "name": "Lunken",
+                             "clouds": [{"cover": "BKN", "base": 2500}]}],
+              [{"icaoId": "KLUK", "rawTAF": "TAF KLUK 121559Z 1216/1312 24012KT P6SM BKN030", "lat": 39.1, "lon": -84.42}])
+    client.post("/preflight/minimums", data={"csrf": token(client), "solo_ceiling": "3000", "solo_crosswind": "8"})
+    page = client.get("/preflight?check=1&airport=LUK&profile=solo&flight_h=1&fob=15&gph=8").text
+    assert "KLUK 121553Z" in page and "TAF KLUK" in page and "cat-mvfr" in page
+    assert "Best" in page and "25" in page          # runway 25 is best for a 240 wind
+    assert "Outside" in page  # 3000 ft ceiling limit vs 2500
+    assert 'name="r_mvfr" value="1" checked' in page and 'name="r_fuel_tight" value="1" checked' in page
+    assert "Density altitude" in page and "Sunrise" in page
+    # unticking an auto item sticks on the next submit
+    again = client.get("/preflight?check=1&airport=LUK&profile=solo&risk_submitted=1&risk_for=LUK%7Cwx").text
+    assert 'name="r_mvfr" value="1" checked' not in again
+    # no weather at the field: nearest station within 30 nm
+    _fake_awc(monkeypatch, [{"icaoId": "KHAO", "obsTime": obs, "wdir": 0, "wspd": 0, "visib": 10, "temp": 15,
+                             "dewp": 5, "altim": 1013, "fltCat": "VFR", "lat": 39.36, "lon": -84.52,
+                             "rawOb": "KHAO 121555Z 00000KT 10SM CLR 15/05 A2992", "name": "Hamilton", "clouds": []}])
+    near = client.get("/preflight?check=1&airport=I67").text
+    assert "No weather is reported at I67" in near and "KHAO" in near and "Calm" in near
+    # the service is down: say so and keep going
+    monkeypatch.setattr(preflight, "_get", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+    preflight._cache.clear()
+    down = client.get("/preflight?check=1&airport=KLUK").text
+    assert "reach aviationweather.gov" in down and "PAVE" in down
+    # save to history and delete
+    _fake_awc(monkeypatch, [{"icaoId": "KLUK", "obsTime": obs, "wdir": 240, "wspd": 5, "visib": "10+", "temp": 20,
+                             "dewp": 10, "altim": 1013, "fltCat": "VFR", "lat": 39.1, "lon": -84.42,
+                             "rawOb": "KLUK 1 24005KT", "name": "Lunken", "clouds": []}])
+    r = client.post("/preflight/save", data={"csrf": token(client), "airport": "KLUK", "profile": "solo", "r_stress": "1"})
+    assert r.status_code == 303 and "saved=1" in r.headers["location"]
+    page = client.get(r.headers["location"]).text
+    assert "Recent checks" in page and "Saved to your preflight history" in page
+    c = main.connect()
+    hid, total = c.execute("SELECT id, risk_total FROM preflight_checks ORDER BY id DESC").fetchone()
+    c.close()
+    assert total >= 3
+    assert client.post(f"/preflight/history/{hid}/delete", data={"csrf": token(client)}).status_code == 303
+    assert client.post("/preflight/save", data={"airport": "KLUK"}).status_code == 403
+
+
+def test_preflight_math():
+    import preflight
+    from datetime import date as _d
+    da = preflight.density_altitude(584, 30, 29.92)
+    assert 2400 < da["density_alt"] < 2700  # hot day at I67
+    s = preflight.sun_times({"lat": 39.26, "lon": -84.77, "tz": "America/New_York"}, _d(2026, 6, 21))
+    assert s["sunrise"].hour == 6 and s["sunset"].hour == 21 and s["civil_dusk"] > s["sunset"]
+    assert s["night_currency"] - s["sunset"] == __import__("datetime").timedelta(hours=1)
+    ends = preflight.runway_winds([{"length": 3000, "width": 75, "surface": "ASP", "lighted": True,
+                                    "ends": [("09", "90"), ("27", "270")]}], 270, 10, None)
+    assert ends[0]["ident"] == "27" and ends[0]["head"] == 10 and ends[0]["cross"] == 0
+    assert preflight.score_risks({"alcohol"})["level"] == "high"
+    assert preflight.score_risks({"night", "stress"})["level"] == "low"
+    assert preflight.score_risks({"ifr", "schedule", "get_home"})["level"] == "caution"
+    f = preflight.fuel_check(2.0, 23, 8, night=True)
+    assert f["legal"] and not f["hour_left"]
+    assert not preflight.fuel_check(2.0, 18, 8, night=True)["legal"]
+    import features
+    assert preflight.runways_for(features.resolve_airport("I67"))
 
 
 def test_costs(client):
@@ -727,7 +807,7 @@ def test_scheduled_backups(client):
 
 
 def test_new_pages_render(client):
-    for path in ("/training", "/currency", "/airports", "/costs", "/minimums", "/more", "/settings", "/data", "/progress"):
+    for path in ("/training", "/currency", "/airports", "/costs", "/preflight", "/preflight/minimums", "/more", "/settings", "/data", "/progress"):
         r = client.get(path)
         assert r.status_code == 200, path
         assert "onchange" not in r.text and "onclick" not in r.text, path
