@@ -739,3 +739,34 @@ def specific_requirements(db, today=None):
                 "detail": f'If your checkride is this month: {h:.1f} h of dual since {start.strftime("%b %-d")}. '
                           "Your instructor confirms it was test preparation."})
     return out
+
+
+def map_payload(stats, nearby_limit=500):
+    """JSON for the interactive map: your airports, the legs between them and other airports around them."""
+    aps = stats["airports"]
+    if not aps:
+        return "null"
+    by_icao = _airports()[0]
+    home = aps[0]["ap"]["icao"] if aps else None
+    mine = [{"code": a["code"], "icao": a["ap"]["icao"], "name": a["ap"]["name"],
+             "place": ", ".join(x for x in (a["ap"]["city"], a["ap"]["subd"]) if x),
+             "lat": a["ap"]["lat"], "lon": a["ap"]["lon"], "visits": a["visits"], "landings": a["landings"],
+             "first": a["first"], "last": a["last"], "home": a["ap"]["icao"] == home} for a in aps]
+    legs = []
+    for (i1, i2), n in stats["legs"].items():
+        p1, p2 = by_icao[i1], by_icao[i2]
+        legs.append({"a": [p1["lat"], p1["lon"]], "b": [p2["lat"], p2["lon"]], "n": n,
+                     "label": f'{p1["lid"] or i1} – {p2["lid"] or i2}', "nm": round(leg_nm(p1, p2))})
+    lats = [m["lat"] for m in mine]
+    lons = [m["lon"] for m in mine]
+    pad = 0.6
+    lo_lat, hi_lat, lo_lon, hi_lon = min(lats) - pad, max(lats) + pad, min(lons) - pad, max(lons) + pad
+    c_lat, c_lon = (lo_lat + hi_lat) / 2, (lo_lon + hi_lon) / 2
+    seen = {m["icao"] for m in mine}
+    near = [ap for ap in by_icao.values()
+            if ap["icao"] not in seen and lo_lat <= ap["lat"] <= hi_lat and lo_lon <= ap["lon"] <= hi_lon
+            and "heliport" not in ap["name"].lower()]
+    near.sort(key=lambda ap: (ap["lat"] - c_lat) ** 2 + (ap["lon"] - c_lon) ** 2)
+    others = [{"code": ap["lid"] or ap["icao"], "name": ap["name"], "lat": ap["lat"], "lon": ap["lon"]}
+              for ap in near[:nearby_limit]]
+    return json.dumps({"airports": mine, "legs": legs, "others": others}, separators=(",", ":")).replace("</", "<\\/")

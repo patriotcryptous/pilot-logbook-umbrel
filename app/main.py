@@ -1,7 +1,8 @@
 """Pilot Logbook - self-hosted, single-pilot web app for umbrelOS.
 
-No accounts (umbrelOS's app proxy already sits in front), no telemetry, no JavaScript. The only
-outbound request is the optional expiry alert, sent to the address the pilot sets in Settings. Pages are rendered on the server, charts are inline SVG.
+No accounts (umbrelOS's app proxy already sits in front), no telemetry. Pages are plain HTML except the
+Airports route map, which runs bundled Leaflet over OpenStreetMap/OpenTopoMap tiles. The only request the
+server itself makes is the optional expiry alert, sent to the address the pilot sets in Settings. Pages are rendered on the server, charts are inline SVG.
 """
 import hmac
 import json
@@ -50,6 +51,7 @@ MAX_SCAN = 40 * 1024 * 1024
 MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "4096")) * 1024 * 1024   # per upload request, Hangar and restore
 MAX_RESTORE = MAX_UPLOAD
 PAGE_SIZE = 100
+MAP_TILE_HOSTS = ["https://tile.openstreetmap.org", "https://*.tile.opentopomap.org"]
 SCAN_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
               ".webp": "image/webp", ".pdf": "application/pdf"}
 
@@ -119,9 +121,15 @@ async def security(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
     if resp.headers.get("content-type", "").startswith("text/html"):
-        resp.headers["Content-Security-Policy"] = (
-            "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'self'; font-src 'self'; "
-            "form-action 'self'; base-uri 'none'")
+        if request.url.path == "/airports":
+            # The route map is the one page with a script (bundled Leaflet) and outside map tiles.
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'none'; script-src 'self'; img-src 'self' data: " + " ".join(MAP_TILE_HOSTS) + "; "
+                "style-src 'self'; font-src 'self'; form-action 'self'; base-uri 'none'")
+        else:
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'self'; font-src 'self'; "
+                "form-action 'self'; base-uri 'none'")
     return resp
 
 
@@ -262,7 +270,8 @@ def icon(name):
 templates.env.globals["icon"] = icon
 templates.env.globals["MORE_KEYS"] = MORE_KEYS
 # Changes with the stylesheet, so browsers fetch the new one after an update instead of a cached copy.
-templates.env.globals["asset_v"] = __import__("hashlib").sha256((BASE / "static" / "app.css").read_bytes()).hexdigest()[:10]
+templates.env.globals["asset_v"] = __import__("hashlib").sha256(
+    (BASE / "static" / "app.css").read_bytes() + (BASE / "static" / "map.js").read_bytes()).hexdigest()[:10]
 templates.env.filters["money"] = lambda v: "$%s" % format(round(v or 0), ",")
 templates.env.filters["money2"] = lambda v: "$%s" % format(v or 0, ",.2f")
 
@@ -588,13 +597,17 @@ def settings(request: Request, saved: int = 0, alerts: str = "", alert_error: st
         prof, enabled, tf = settings_ctx(c)
         al = features.alert_settings(prof)
         upcoming = [x for x in features.expiring_items(c, prof) if x["days"] >= 0][:8]
+        if not prof.get("alert_topic"):  # one random topic name per install, so the suggestion stays put
+            prof["alert_topic"] = "pilot-logbook-" + secrets.token_hex(5)
+            core.profile_set(c, {"alert_topic": prof["alert_topic"]})
+    suggested = "https://ntfy.sh/" + prof["alert_topic"]
     review = prof.get("flight_review")
     groups = {}
     for key, label, group, hint, _ in core.FEATURES:
         groups.setdefault(group, []).append({"key": key, "label": label, "hint": hint, "on": key in enabled})
     return render(request, "settings.html", prof=prof, tf=tf, groups=groups, formats=core.TIME_FORMATS,
                   review_through=core.flight_review_through(review) if review else None, saved=bool(saved),
-                  al=al, alerts=alerts, alert_error=alert_error, upcoming=upcoming)
+                  al=al, alerts=alerts, alert_error=alert_error, upcoming=upcoming, suggested=suggested)
 
 
 @app.post("/settings")
@@ -1249,7 +1262,8 @@ def airports_page(request: Request, year: str = ""):
         stats = features.airport_stats(c, year)
         years = [r[0] for r in c.execute("SELECT DISTINCT substr(date,1,4) FROM flights ORDER BY 1 DESC")]
     top = max((a["landings"] for a in stats["airports"]), default=1) or 1
-    return render(request, "airports.html", s=stats, map=mapsvg.route_map(stats), years=years, year=year, top=top, tf=tf)
+    return render(request, "airports.html", s=stats, map=mapsvg.route_map(stats), years=years, year=year, top=top, tf=tf,
+                  map_json=features.map_payload(stats))
 
 
 # ----------------------------------------------------------------------------- personal minimums

@@ -405,3 +405,24 @@ table.mins td { vertical-align: middle; }
 .checks .mark { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: .8rem; margin-top: 1px; }
 .checks li.met .mark { background: var(--green); border-color: var(--green); color: var(--panel); }
 .checks p { margin-top: 2px; }
+
+/* ---------- interactive route map ---------- */
+.route-map { display: none; height: 560px; border-radius: 10px; background: var(--panel-2); z-index: 0; }
+.map-wrap.live .route-map { display: block; }
+.map-wrap.live .map-fallback { display: none; }
+.route-map .leaflet-control-attribution { font-size: 10px; }
+.route-map .apt-label { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+  font: 700 12px var(--num); padding: 1px 6px; box-shadow: none; }
+.route-map .apt-label::before { display: none; }
+.route-map .ring-tip { background: transparent; border: 0; box-shadow: none; color: #F26A21; font: 700 11px var(--sans); }
+.route-map .leaflet-popup-content-wrapper, .route-map .leaflet-popup-tip { background: var(--panel); color: var(--text); }
+.apt-pop b { font: 700 1.05rem var(--num); } .apt-pop .apt-name { font-weight: 600; }
+.apt-pop .apt-place, .apt-pop .apt-dates { color: var(--soft); font-size: .8125rem; } .apt-pop .apt-stats { margin-top: 4px; }
+.map-fit { font: 600 12px var(--sans); background: #fff; color: #333; border: 2px solid rgba(0,0,0,.2); border-radius: 4px;
+  padding: 4px 8px; cursor: pointer; background-clip: padding-box; }
+.map-fit:hover { background-color: #f4f4f4; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .route-map .tiles-streets { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); } }
+:root[data-theme="dark"] .route-map .tiles-streets { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); }
+@media (max-width: 760px) { .route-map { height: 420px; } }
+.howto { margin-bottom: 14px; } .howto ol { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 6px; }
+.howto code { font: 600 .875rem ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; word-break: break-all; }

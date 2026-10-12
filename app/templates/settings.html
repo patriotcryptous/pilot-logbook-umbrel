@@ -44,10 +44,19 @@
   <p class="hint">Get a phone notification before your medical, flight review, endorsements, Hangar documents or passenger currency run out. Alerts go to an <a href="https://ntfy.sh" rel="noreferrer">ntfy</a> topic, either the free ntfy.sh service or the ntfy app on your Umbrel, or to any address that accepts a plain-text POST.</p>
   {% if alerts == "saved" %}<div class="notice" role="status">Alert settings saved.</div>{% elif alerts == "sent" %}<div class="notice" role="status">Test alert sent. Check your phone.</div>{% endif %}
   {% if alert_error %}<div class="notice err" role="alert">{{ alert_error }}</div>{% endif %}
+  <details class="more howto"{% if not al.url %} open{% endif %}><summary>How to set it up (3 minutes)</summary>
+    <ol>
+      <li>Install the free <b>ntfy</b> app on your phone (App Store or Google Play) and allow notifications.</li>
+      <li>In ntfy, tap <b>+</b> to subscribe to a topic and enter this private name: <code>{{ (al.url or suggested).rsplit("/", 1)[-1] }}</code>. Keep the server as ntfy.sh.</li>
+      <li>Paste <code>{{ al.url or suggested }}</code> into <b>Send alerts to</b> below (it's filled in for you), tick <b>Send expiry alerts</b> and click <b>Save alerts</b>.</li>
+      <li>Click <b>Send a test alert</b>. Your phone should buzz within a few seconds.</li>
+    </ol>
+    <p class="note">Alerts cover your medical and flight review (enter both under Pilot above), endorsements with an expiry, Hangar documents with an expiry date, and your passenger currency. The name is the only thing protecting your topic, so keep it long and random.</p>
+  </details>
   <form method="post" action="/settings/alerts" autocomplete="off">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <div class="formgrid">
-      <label class="field span-all"><span>Send alerts to</span><input name="url" type="url" value="{{ al.url }}" placeholder="https://ntfy.sh/your-private-topic-name">
+      <label class="field span-all"><span>Send alerts to</span><input name="url" type="url" value="{{ al.url or suggested }}">
         <small>Pick a long, hard-to-guess topic name: anyone who knows a public ntfy.sh topic can read it. On your Umbrel the ntfy app's address looks like http://umbrel.local:PORT/your-topic.</small></label>
       <label class="field"><span>Access token</span><input name="token" type="password" placeholder="{{ 'Saved, leave blank to keep' if al.token else 'Optional' }}">
         {% if al.token %}<small><label class="flag"><input type="checkbox" name="clear_token" value="1">Remove saved token</label></small>{% endif %}</label>

@@ -8,7 +8,7 @@ Your logbook is the record of every hour you've earned, and it should have a bac
 
 - **Back up your paper logbook.** Photograph your pages and file them by date, and enter or import your flights, so a lost, stolen or water-damaged logbook isn't the end of your records.
 - **Own your copy of your data.** If you log in ForeFlight, your records live in their cloud, tied to your account and subscription. Pilot Logbook keeps a complete copy on hardware you own: import your ForeFlight CSV whenever you like, and export it back out in ForeFlight's own format at any time.
-- **Private by design.** No accounts, no cloud, no telemetry. Nothing leaves your Umbrel unless you turn on expiry alerts.
+- **Private by design.** No accounts, no cloud, no telemetry. Your logbook never leaves your Umbrel. The only outside connections are the map tiles your browser loads on the Airports page and the expiry alerts, if you turn them on.
 
 ## Features
 
@@ -17,7 +17,7 @@ Your logbook is the record of every hour you've earned, and it should have a bac
 - **Document Hangar:** store insurance, certificates, POH and manuals, notes, photos and videos, with categories, search, and expiry dates that warn you on the dashboard.
 - **Endorsements and checkride packet:** log each endorsement with your instructor's details and when it expires, then download one PDF with your hours against the 61.109 minimums, endorsements, currency and documents.
 - **Currency forecast:** see the day your day and night passenger currency runs out if you don't fly again.
-- **Airports:** a route map of everywhere you've flown, landings by airport, and towered versus non-towered landings.
+- **Airports:** an interactive route map of everywhere you've flown (zoom, street or terrain view, nearby airports, range rings), landings by airport, and towered versus non-towered landings.
 - **Personal minimums:** set your limits for solo, passenger and dual flights, then paste a METAR for a go/no-go check with the crosswind worked out.
 - **Costs:** aircraft and instructor rates, fuel and other costs per flight, spending per month, and what the rest of your training should cost.
 - **Expiry alerts:** optional phone notifications through ntfy before your medical, flight review, endorsements, documents or currency run out.
@@ -40,7 +40,7 @@ Found a bug or have an idea? [Open an issue](https://github.com/patriotcryptous/
 
 Pilot Logbook is a personal record-keeping aid, provided as is, with no warranty of any kind. Currency, progress toward certificate minimums, endorsement expiry, personal minimums, crosswind and cost figures are calculated from what you entered and can be wrong. They are reminders, not legal determinations: confirm your eligibility and currency with your instructor, examiner or the FAA, and check the current regulations yourself. Keep your original logbook and endorsements, and keep a backup of this app's data somewhere other than your Umbrel.
 
-This project isn't affiliated with, endorsed by or sponsored by ForeFlight or the FAA. ForeFlight is a trademark of its owner. Airport data comes from [airportsdata](https://github.com/mborsetti/airportsdata) (MIT License) and map boundaries from [us-atlas](https://github.com/topojson/us-atlas) (US Census Bureau data, ISC License).
+This project isn't affiliated with, endorsed by or sponsored by ForeFlight or the FAA. ForeFlight is a trademark of its owner. Airport data comes from [airportsdata](https://github.com/mborsetti/airportsdata) (MIT License) and offline map boundaries from [us-atlas](https://github.com/topojson/us-atlas) (US Census Bureau data, ISC License). The interactive map uses [Leaflet](https://leafletjs.com) (BSD 2-Clause), with tiles from [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors and [OpenTopoMap](https://opentopomap.org) (CC-BY-SA).
 
 ## Credits
 

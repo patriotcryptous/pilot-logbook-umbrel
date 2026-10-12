@@ -2,7 +2,7 @@ manifestVersion: 1
 id: hangar-pilot-logbook
 category: files
 name: Pilot Logbook
-version: "1.3.1"
+version: "1.3.2"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
@@ -12,13 +12,13 @@ description: >-
   Photograph your paper logbook pages and file them by date, so a lost or damaged logbook isn't the end of your records. Import your ForeFlight logbook as a CSV whenever you like (importing again only adds new flights) and export it back out in ForeFlight's own format at any time, so you can always move your data wherever you want.
 
 
-  On top of that backup is a full single-pilot logbook: a live dashboard with your totals, 90-day landing currency, flight review and medical reminders, and progress toward private pilot minimums. Track your instructor's endorsements and download a checkride packet, see when your passenger currency runs out, map the airports you've flown to, check the weather against your personal minimums, and track what your flying costs.
+  On top of that backup is a full single-pilot logbook: a live dashboard with your totals, 90-day landing currency, flight review and medical reminders, and progress toward private pilot minimums. Track your instructor's endorsements and download a checkride packet, see when your passenger currency runs out, explore an interactive map of the airports you've flown to, check the weather against your personal minimums, and track what your flying costs.
 
 
   Keep your insurance, certificates, POH, notes, photos and videos in the Document Hangar, with reminders before anything expires. Optional phone alerts (through ntfy) and scheduled backups.
 
 
-  No accounts, no cloud, no telemetry. The only outbound request is the expiry alert, and only if you turn it on.
+  No accounts, no cloud, no telemetry, and your logbook never leaves your Umbrel. The only outside connections are the map tiles your browser loads on the Airports page and the expiry alerts, if you turn them on.
 
 
   Currency, progress, minimums and cost figures are reminders based on what you have logged, not a determination of legal currency or certificate eligibility. Keep your original logbook. Not affiliated with ForeFlight or the FAA.
@@ -33,6 +33,6 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Progress now checks the night cross-country, the long solo cross-country and the 3 hours of test preparation from the distance, route and dates you log. A new currency forecast chart, fixes for pages that showed blank or bunched up after updating, and tidier towered landing fields.
+  An interactive route map: zoom and pan, street or terrain view, other airports nearby, range rings around your home field, and details for every airport you've visited. Expiry alerts now walk you through setup with a ready-made private ntfy topic.
 submitter: patriotcryptous
 submission: https://github.com/patriotcryptous/pilot-logbook-umbrel

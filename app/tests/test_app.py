@@ -730,7 +730,22 @@ def test_new_pages_render(client):
     for path in ("/training", "/currency", "/airports", "/costs", "/minimums", "/more", "/settings", "/data", "/progress"):
         r = client.get(path)
         assert r.status_code == 200, path
-        assert "<script" not in r.text and "onchange" not in r.text, path
+        assert "onchange" not in r.text and "onclick" not in r.text, path
+        for tag in re.findall(r"<script[^>]*>", r.text):  # only the map page has scripts, all from this server
+            assert path == "/airports" and ('type="application/json"' in tag or 'src="/static/' in tag), (path, tag)
+        csp = r.headers["content-security-policy"]
+        assert ("script-src 'self'" in csp) == (path == "/airports") and "unsafe-inline" not in csp, path
+
+
+def test_map_data_is_safe_json(client):
+    import features
+    stats = {"airports": [{"code": "</script>", "ap": {"icao": "KI67", "name": "<b>x</b></script>", "city": "", "subd": "",
+                                                        "lat": 39.26, "lon": -84.77}, "visits": 1, "landings": 1,
+                           "first": "2026-01-01", "last": "2026-01-01"}], "legs": {}}
+    out = features.map_payload(stats)
+    assert "</" not in out and json.loads(out)["airports"][0]["code"] == "</script>"
+    assert len(json.loads(out)["others"]) > 5  # other airports around Cincinnati West
+    assert client.get("/static/leaflet/leaflet.js").status_code == 200 and client.get("/static/map.js").status_code == 200
 
 
 def test_progress_specific_flights(client):

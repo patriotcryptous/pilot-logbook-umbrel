@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Airports{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/leaflet/leaflet.css">{% endblock %}
 {% block content %}
 <header class="page-head">
   <div><h1>Airports</h1><p class="sub">{{ s.airports|length }} airport{{ "s" if s.airports|length != 1 }} from your logbook{% if year %} in {{ year }}{% endif %}.</p></div>
@@ -15,8 +16,14 @@
 {% else %}
 <section class="panel">
   <h2>Route map</h2>
-  <div class="map-wrap">{{ map }}</div>
-  <p class="note">Circles grow with the number of flights; lines get thicker the more often you flew a leg. State lines: US Census Bureau via us-atlas. Airport data: airportsdata (MIT).</p>
+  <div class="map-wrap" id="map-wrap">
+    <div id="route-map" class="route-map" role="region" aria-label="Interactive map of the airports you have flown to"></div>
+    <div class="map-fallback">{{ map }}</div>
+  </div>
+  <p class="note">Scroll, pinch or use + and &minus; to zoom; drag to move. The layers button switches between street and terrain maps and shows other airports nearby and 25, 50 and 100 nm rings around your home field. Click an airport for its details. Map tiles load from OpenStreetMap and OpenTopoMap; your logbook stays on your Umbrel. Airport data: airportsdata (MIT).</p>
+  <script type="application/json" id="map-data">{{ map_json|safe }}</script>
+  <script src="/static/leaflet/leaflet.js"></script>
+  <script src="/static/map.js?v={{ asset_v }}"></script>
 </section>
 <div class="two">
 <section class="panel">
