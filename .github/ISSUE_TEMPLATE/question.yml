@@ -1,0 +1,11 @@
+name: Question or help
+description: Ask how to do something or get help with your install
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: Please leave out personal details and don't attach logbook files; this repository is public.
+    validations:
+      required: true

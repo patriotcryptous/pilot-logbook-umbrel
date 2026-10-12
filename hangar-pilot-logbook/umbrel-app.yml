@@ -6,27 +6,27 @@ version: "1.3.0"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
-  A private, single-pilot logbook with a live dashboard, running entirely on your umbrelOS device.
+  Your logbook is a record of every hour you've worked for, and it deserves a backup you control. Pilot Logbook keeps a complete copy on your own umbrelOS device: a safe home for your paper logbook, and your own copy of your ForeFlight logbook, so your records don't live only in someone else's cloud account or subscription.
 
 
-  Import your ForeFlight logbook as a CSV, add flights by hand, and keep photos of your paper logbook pages filed by date. See your totals, 90-day landing currency, flight review and medical reminders, and your progress toward private pilot minimums.
+  Photograph your paper logbook pages and file them by date, so a lost or damaged logbook isn't the end of your records. Import your ForeFlight logbook as a CSV whenever you like (importing again only adds new flights) and export it back out in ForeFlight's own format at any time, so you can always move your data wherever you want.
 
 
-  Track your instructor's endorsements and download a checkride packet. See when your passenger currency runs out, map the airports you've flown to, check the weather against your personal minimums, and track what your flying costs.
+  On top of that backup is a full single-pilot logbook: a live dashboard with your totals, 90-day landing currency, flight review and medical reminders, and progress toward private pilot minimums. Track your instructor's endorsements and download a checkride packet, see when your passenger currency runs out, map the airports you've flown to, check the weather against your personal minimums, and track what your flying costs.
 
 
   Keep your insurance, certificates, POH, notes, photos and videos in the Document Hangar, with reminders before anything expires. Optional phone alerts (through ntfy) and scheduled backups.
 
 
-  Export your whole logbook back out as a ForeFlight-format CSV, a printable PDF with page totals, or a full backup zip. No accounts, no cloud, no telemetry: your logbook is a legal record, and it stays yours. The only outbound request is the expiry alert, and only if you turn it on.
+  No accounts, no cloud, no telemetry. The only outbound request is the expiry alert, and only if you turn it on.
 
 
-  Currency and progress figures are reminders based on what you have logged. They are not a determination of legal currency or certificate eligibility.
+  Currency, progress, minimums and cost figures are reminders based on what you have logged, not a determination of legal currency or certificate eligibility. Keep your original logbook. Not affiliated with ForeFlight or the FAA.
 developer: patriotcryptous
 website: https://github.com/patriotcryptous/pilot-logbook-umbrel
 dependencies: []
 repo: https://github.com/patriotcryptous/pilot-logbook-umbrel
-support: https://github.com/patriotcryptous/pilot-logbook-umbrel/issues
+support: https://github.com/patriotcryptous/pilot-logbook-umbrel/issues/new/choose
 port: 8080
 gallery: []
 path: ""

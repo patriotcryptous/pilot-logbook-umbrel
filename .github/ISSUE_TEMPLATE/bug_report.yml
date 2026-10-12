@@ -1,0 +1,36 @@
+name: Something isn't working
+description: Report a bug or a problem with Pilot Logbook
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Please don't attach your logbook, CSV export, backup zip or documents**: this repository is public. Describe the problem instead, or paste a few made-up rows that show it.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown on the Pilot Logbook page in the umbrelOS App Store.
+      placeholder: "1.3.0"
+  - type: input
+    id: device
+    attributes:
+      label: Umbrel device and umbrelOS version
+      placeholder: Umbrel Pro, umbrelOS 1.x
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device you used the app on
+      placeholder: Safari on iPhone, Chrome on Mac
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots help. Blur out personal details first.

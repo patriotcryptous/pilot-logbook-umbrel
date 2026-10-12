@@ -1,6 +1,14 @@
 # Pilot Logbook for umbrelOS
 
-A private, single-pilot logbook that runs on your own Umbrel. Import your ForeFlight logbook, add flights, file photos of your paper logbook pages, and keep your important documents in one place. No accounts, no cloud, no telemetry.
+A private, single-pilot logbook that runs on your own Umbrel.
+
+## Why
+
+Your logbook is the record of every hour you've earned, and it should have a backup you control.
+
+- **Back up your paper logbook.** Photograph your pages and file them by date, and enter or import your flights, so a lost, stolen or water-damaged logbook isn't the end of your records.
+- **Own your copy of your data.** If you log in ForeFlight, your records live in their cloud, tied to your account and subscription. Pilot Logbook keeps a complete copy on hardware you own: import your ForeFlight CSV whenever you like, and export it back out in ForeFlight's own format at any time.
+- **Private by design.** No accounts, no cloud, no telemetry. Nothing leaves your Umbrel unless you turn on expiry alerts.
 
 ## Features
 
@@ -23,3 +31,17 @@ A private, single-pilot logbook that runs on your own Umbrel. Import your ForeFl
 3. Open the app, go to **Import & backup**, and upload your ForeFlight CSV.
 
 The app has no login of its own. It relies on umbrelOS's app proxy.
+
+## Support
+
+Found a bug or have an idea? [Open an issue](https://github.com/patriotcryptous/pilot-logbook-umbrel/issues/new/choose). Please don't attach your logbook, exports or documents: this repository is public.
+
+## Disclaimer
+
+Pilot Logbook is a personal record-keeping aid, provided as is, with no warranty of any kind. Currency, progress toward certificate minimums, endorsement expiry, personal minimums, crosswind and cost figures are calculated from what you entered and can be wrong. They are reminders, not legal determinations: confirm your eligibility and currency with your instructor, examiner or the FAA, and check the current regulations yourself. Keep your original logbook and endorsements, and keep a backup of this app's data somewhere other than your Umbrel.
+
+This project isn't affiliated with, endorsed by or sponsored by ForeFlight or the FAA. ForeFlight is a trademark of its owner. Airport data comes from [airportsdata](https://github.com/mborsetti/airportsdata) (MIT License) and map boundaries from [us-atlas](https://github.com/topojson/us-atlas) (US Census Bureau data, ISC License).
+
+## Credits
+
+Built by [patriotcryptous](https://github.com/patriotcryptous) with [Claude](https://claude.ai), Anthropic's AI model, which wrote much of the code.
