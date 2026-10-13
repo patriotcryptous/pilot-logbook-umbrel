@@ -1,0 +1,74 @@
+manifestVersion: 1
+id: hangar-builder-log
+category: files
+name: Builder Log
+version: "1.0.0"
+tagline: Track your Van's Aircraft kit build on your own server
+description: >-
+  Builder Log keeps the record of an experimental aircraft build on hardware you
+  own. It is built for Van's RV kits, and works for any kit plane.
+
+
+  Log every shop session with hours, notes, photos and the people who helped.
+  Track completion as a percentage per kit and per section, so the dashboard
+  always shows where the aircraft stands. Check parts off a packing list as the
+  crates arrive. Record what everything costs, with receipts attached. Keep
+  plans, invoices, service bulletins and inspection paperwork in one place.
+
+
+  Features:
+
+
+  - Build log with hours, notes, tags and contributor hours, plus a running
+    work timer and a quick-add page for your phone in the shop
+
+  - Completion tracking per kit and per section, with weights for the bigger
+    jobs and a manual override when you would rather set the number yourself
+
+  - Photos with numbered annotations, captions and a searchable gallery
+
+  - Inventory with packing-list CSV import and received, partial, backordered,
+    missing and damaged states
+
+  - Costs by category and kit, against an optional budget, with receipts
+
+  - Document storage for plans, invoices, bulletins and paperwork you own
+
+  - Insights: hours by month, cumulative hours, hours per kit and per person,
+    which days you build, longest sessions, cost per build hour and a
+    straight-line finish estimate
+
+  - Search across entries, photo captions and pins, documents, parts and costs
+
+  - Exports: log CSV, inventory CSV, costs CSV, full JSON, a photo archive, a
+    complete backup zip, and a printable builder log PDF in Letter or A4
+
+  - Import from an EAA Builders Log, MyKitLog, KitFlight or spreadsheet CSV
+
+
+  Nothing in this app contacts the internet. Your log, photos and documents stay
+  in the app's data folder on your Umbrel.
+developer: Wyley Gump
+website: https://github.com/patriotcryptous/builder-log-umbrel
+dependencies: []
+repo: https://github.com/patriotcryptous/builder-log-umbrel
+support: https://github.com/patriotcryptous/builder-log-umbrel/issues
+port: 8231
+gallery:
+  - 1.jpg
+  - 2.jpg
+  - 3.jpg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: Wyley Gump
+submission: https://github.com/patriotcryptous/builder-log-umbrel
+releaseNotes: >-
+  First release.
+
+
+  Build log with hours and photos, a work timer, kit and section completion
+  percentages, photo annotations, inventory with CSV import, costs with
+  receipts, document storage, an insights dashboard, search across everything,
+  CSV, JSON, photo-archive and backup exports, a printable builder log PDF, and
+  import from the EAA Builders Log, MyKitLog or KitFlight.
