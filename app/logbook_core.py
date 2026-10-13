@@ -375,24 +375,26 @@ def import_foreflight(db, raw_bytes, filename="logbook.csv"):
                    tuple(vals.values()))
 
     new = skipped = 0
-    seen = {}
+    seen, fps, new_ids = {}, set(), []
     for f in flights:
         base = tuple(sorted(f.items()))
         seen[base] = seen.get(base, 0) + 1
         fp = fingerprint(f, seen[base])
+        fps.add(fp)
         vals = {fld["key"]: parse_value(fld, f.get(fld["ff"])) for fld in FIELDS}
         extra = {k: v for k, v in f.items() if k not in BY_FF and v not in ("", "0", "0.0", "0.00")}
         try:
-            db.execute(
+            cur = db.execute(
                 f"INSERT INTO flights(fingerprint, import_id, extra_json, {','.join(vals)}) "
                 f"VALUES (?,?,?,{','.join('?' * len(vals))})",
                 (fp, import_id, json.dumps(extra), *vals.values()))
+            new_ids.append(cur.lastrowid)
             new += 1
         except sqlite3.IntegrityError:
             skipped += 1
     db.execute("UPDATE imports SET flights_new=?, flights_skipped=? WHERE id=?", (new, skipped, import_id))
     db.commit()
-    return {"new": new, "skipped": skipped}
+    return {"new": new, "skipped": skipped, "import_id": import_id, "fps": fps, "new_ids": new_ids}
 
 
 # ----------------------------------------------------------------------------- export

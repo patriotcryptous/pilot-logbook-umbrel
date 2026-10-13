@@ -14,8 +14,10 @@ Your logbook is the record of every hour you've earned, and it should have a bac
 
 - **Dashboard:** totals, 90-day landing currency, flight review and medical reminders, hours per month, a running total, a year of flying days, and progress toward your next certificate. Currency and progress are reminders, not legal determinations.
 - **Progress:** switch between sport, private, instrument and commercial (airplane) requirements, with the flights that must meet a distance or route standard checked from your logbook.
-- **ForeFlight in and out:** import your ForeFlight CSV and export it again, with every ForeFlight field stored and editable. Importing is safe to repeat.
+- **ForeFlight in and out:** import your ForeFlight CSV and export it again, with every ForeFlight field stored and editable. Importing is safe to repeat, flights you edited in ForeFlight are spotted so you can replace the old copy, and the dashboard reminds you when your last import is two weeks old.
 - **Document Hangar:** store insurance, certificates, POH and manuals, notes, photos and videos, with categories, search, and expiry dates that warn you on the dashboard. The current FAR (from the eCFR) and AIM (from faa.gov) are downloaded on first start and kept up to date. Paper logbook scans and import and backup live here too.
+- **Reports:** your hours laid out like the IACRA (Form 8710-1) pilot time grid, a logbook check that flags entries an examiner or insurer would question, and an insurance summary (total, PIC, recent and make-and-model time) as a PDF.
+- **Quick add:** a short phone-friendly form for logging the basics right after you land.
 - **Endorsements and checkride packet:** log each endorsement with your instructor's details and when it expires, then download one PDF with your hours against the 61.109 minimums, endorsements, currency and documents.
 - **Currency forecast:** see the day your day and night passenger currency runs out if you don't fly again.
 - **Airports:** an interactive route map of everywhere you've flown (zoom, street or terrain view, nearby airports, range rings), landings by airport, and towered versus non-towered landings.

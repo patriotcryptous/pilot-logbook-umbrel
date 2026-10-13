@@ -40,6 +40,7 @@ import mapsvg
 import pdfexport
 import preflight
 import refs
+import reports
 
 BASE = Path(__file__).parent
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
@@ -105,6 +106,7 @@ def ensure_all(c):
     core.ensure_schema(c)
     features.ensure_schema(c)
     preflight.ensure_schema(c)
+    reports.ensure_schema(c)
 
 
 with db() as _c:
@@ -146,6 +148,7 @@ def check_csrf(request: Request, token: str):
 
 NAV = [("dash", "/", "Dashboard", "grid"), ("logbook", "/logbook", "Logbook", "book"),
        ("add", "/flights/new", "Add flight", "plus"), ("progress", "/progress", "Progress", "target"),
+       ("reports", "/reports", "Reports", "file"),
        ("training", "/training", "Endorsements", "award"), ("currency", "/currency", "Currency", "clock"),
        ("airports", "/airports", "Airports", "map"), ("costs", "/costs", "Costs", "dollar"),
        ("preflight", "/preflight", "Preflight Risk Check", "shield"),
@@ -317,6 +320,9 @@ def dashboard(request: Request):
         rem = reminders_for(c, prof)
         prog = features.progress_for(c, cert_of(request), today)
         hsum = hangar.summary(c, DOCS, today)
+        n_changes = c.execute("SELECT COUNT(*) FROM flight_changes").fetchone()[0]
+        last_imp = reports.last_import(c)
+        audit_errors = reports.audit(c, today)["counts"]["error"]
     rings = []
     for k in cur:
         rings.append({
@@ -331,7 +337,9 @@ def dashboard(request: Request):
             "day_through": k["day_through"], "night_through": k["night_through"]})
     ctx = dict(d=d, t=d["totals"], hsum=hsum, rings=rings, reminders=rem, prog=prog["tracked"][:6], prog_title=prog["label"], tf=tf,
                monthly=charts.monthly_bars(d["months"], tf), cumul=charts.cumulative_line(d["cumulative"], tf),
-               heat=charts.heatmap(d["heat"], today, tf), first_name=(prof.get("name") or "").split(" ")[0])
+               heat=charts.heatmap(d["heat"], today, tf), first_name=(prof.get("name") or "").split(" ")[0],
+               n_changes=n_changes, audit_errors=audit_errors,
+               import_age=(today - last_imp).days if last_imp else None)
     return render(request, "dashboard.html", **ctx)
 
 
@@ -1015,7 +1023,9 @@ def data_page(request: Request, msg: str = "", error: str = ""):
                             "ORDER BY id DESC").fetchall()
         n = c.execute("SELECT COUNT(*) FROM flights").fetchone()[0]
         ab = autobackup_settings(core.profile_get(c))
-    return render(request, "data.html", imports=imports, n=n, msg=msg, error=error, ab=ab, backups=list_backups())
+        changes = reports.pending_changes(c)
+    return render(request, "data.html", imports=imports, n=n, msg=msg, error=error, ab=ab, backups=list_backups(),
+                  changes=changes)
 
 
 @app.post("/data/delete-all")
@@ -1026,6 +1036,7 @@ def delete_all_logs(request: Request, csrf: str = Form(""), phrase: str = Form("
     with db() as c:
         c.execute("DELETE FROM flights")
         c.execute("DELETE FROM flight_costs")
+        c.execute("DELETE FROM flight_changes")
         c.execute("DELETE FROM imports")  # so the same ForeFlight file can be imported again
         c.commit()
     return back("/data", msg="All logbook entries were deleted.")
@@ -1038,6 +1049,7 @@ async def import_csv(request: Request, csrf: str = Form(""), file: UploadFile = 
         raw = await read_limited(file, MAX_CSV)
         with db() as c:
             res = core.import_foreflight(c, raw, Path(file.filename or "logbook.csv").name)
+            changed = reports.detect_changes(c, res["import_id"], res["fps"], res["new_ids"]) if res.get("new_ids") else 0
     except ValueError as e:
         return back("/data", error=str(e))
     if res.get("note"):
@@ -1047,6 +1059,9 @@ async def import_csv(request: Request, csrf: str = Form(""), file: UploadFile = 
         if res["skipped"]:
             msg += f"; skipped {res['skipped']} already in your logbook"
         msg += "."
+        if changed:
+            msg += (f" {changed} of them look like flight{'s' if changed != 1 else ''} you edited in ForeFlight; "
+                    "review them below.")
     return back("/data", msg=msg)
 
 
@@ -1729,6 +1744,124 @@ async def autobackup_delete(request: Request, name: str):
     check_csrf(request, form.get("csrf", ""))
     _backup_path(name).unlink(missing_ok=True)
     return back("/data", msg="Backup deleted.")
+
+
+# ----------------------------------------------------------------------------- reports
+
+REPORT_TABS = [("hours", "Hours for IACRA"), ("check", "Logbook check"), ("insurance", "Insurance summary")]
+
+
+@app.get("/reports")
+def reports_page(request: Request, tab: str = "hours"):
+    tab = tab if tab in dict(REPORT_TABS) else "hours"
+    with db() as c:
+        prof, _, tf = settings_ctx(c)
+        ctx = {"tab": tab, "tabs": REPORT_TABS, "tf": tf}
+        if tab == "hours":
+            ctx["h"] = reports.hours_8710(c)
+        elif tab == "check":
+            ctx["a"] = reports.audit(c)
+        else:
+            ctx["ins"] = reports.insurance(c)
+            ctx["reminders"] = reminders_for(c, prof)
+    return render(request, "reports.html", **ctx)
+
+
+@app.get("/export/insurance.pdf")
+def export_insurance():
+    with db() as c:
+        prof, _, tf = settings_ctx(c)
+        pdf = reports.insurance_pdf(reports.insurance(c), prof, reminders_for(c, prof), lambda v: core.fmt_hours(v, tf))
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="pilot-experience-{date.today().isoformat()}.pdf"'})
+
+
+@app.post("/data/changes/{cid}")
+async def change_resolve(request: Request, cid: int):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    keep = "new" if form.get("keep") == "new" else "both"
+    with db() as c:
+        if cid == 0:
+            ids = [r[0] for r in c.execute("SELECT id FROM flight_changes")]
+            for i in ids:
+                reports.resolve_change(c, i, keep)
+            msg = f"Updated {len(ids)} flight{'s' if len(ids) != 1 else ''} to ForeFlight's version." if keep == "new" else "Kept both copies."
+        else:
+            reports.resolve_change(c, cid, keep)
+            msg = "Replaced with ForeFlight's version." if keep == "new" else "Kept both copies."
+    return back("/data", msg=msg)
+
+
+# ----------------------------------------------------------------------------- quick add
+
+@app.get("/flights/quick")
+def quick_add(request: Request, saved: int = 0):
+    with db() as c:
+        _, _, tf = settings_ctx(c)
+        ctx = form_context(c)
+        last = c.execute("SELECT * FROM flights ORDER BY date DESC, id DESC LIMIT 1").fetchone()
+    f = {"date": date.today().isoformat(), "kind": "dual"}
+    if last:
+        f.update(aircraft=last["aircraft"], from_apt=last["from_apt"], to_apt=last["to_apt"],
+                 kind="solo" if (last["solo"] or 0) > 0 else "pic" if (last["dual_received"] or 0) == 0 else "dual")
+    return render(request, "quick.html", f=f, errors=[], tf=tf, saved=saved, **ctx)
+
+
+@app.post("/flights/quick")
+async def quick_add_save(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    errors = []
+    when = (form.get("date") or "").strip()
+    try:
+        if datetime.strptime(when, "%Y-%m-%d").date() > date.today() + timedelta(days=1):
+            errors.append("The date is in the future.")
+    except ValueError:
+        errors.append("Enter the flight date.")
+    tail = (form.get("aircraft") or "").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9\-]{1,12}", tail):
+        errors.append("Choose or type the aircraft (letters, digits and dashes).")
+    try:
+        total = core.parse_hours(form.get("total") or "")
+        if total <= 0 or total > 24:
+            raise ValueError
+    except ValueError:
+        errors.append("Total time must be hours, like 1.3 or 1:18.")
+        total = 0.0
+    def n(key):
+        try:
+            v = int(form.get(key) or 0)
+            if v < 0 or v > 99:
+                raise ValueError
+            return v
+        except ValueError:
+            errors.append("Landings must be whole numbers.")
+            return 0
+    day, night_l = n("day_landings"), n("night_landings")
+    kind = form.get("kind") if form.get("kind") in ("dual", "solo", "pic") else "dual"
+    night = bool(form.get("night"))
+    with db() as c:
+        _, _, tf = settings_ctx(c)
+        ctx = form_context(c)
+        if errors:
+            return render(request, "quick.html", status=422, f=dict(form), errors=errors, tf=tf, saved=0, **ctx)
+        if not c.execute("SELECT 1 FROM aircraft WHERE ident=?", (tail,)).fetchone():
+            core.ensure_aircraft(c, tail, "", "", "airplane_single_engine_land")
+        v = {"date": when, "aircraft": tail, "total": total,
+             "from_apt": (form.get("from_apt") or "").strip().upper()[:8],
+             "to_apt": (form.get("to_apt") or "").strip().upper()[:8],
+             "dual_received": total if kind == "dual" else 0.0,
+             "solo": total if kind == "solo" else 0.0,
+             "pic": total if kind in ("solo", "pic") else 0.0,
+             "night": total if night else 0.0,
+             "day_landings": day, "night_landings": night_l,
+             "instructor": (form.get("instructor") or "").strip()[:120] if kind == "dual" else "",
+             "comments": (form.get("comments") or "").strip()[:500]}
+        if v["from_apt"] and v["to_apt"] and v["from_apt"] != v["to_apt"]:
+            v["route"] = f'{v["from_apt"]} {v["to_apt"]}'
+        fid = core.add_flight(c, v)
+    return RedirectResponse(f"/flights/quick?saved={fid}", status_code=303)
 
 
 # ----------------------------------------------------------------------------- FAR/AIM in the Hangar

@@ -4,6 +4,24 @@
 {% block content %}
 <header class="page-head"><div><h1>Document Hangar</h1><p class="sub">Import from ForeFlight, export, and back up everything. Your logbook lives only on this server, so keep a copy somewhere else too.</p></div></header>
 {{ hangar_tabs("data") }}
+{% if changes %}
+<section class="panel attention" id="changes">
+  <h2>{{ changes|length }} flight{{ "s" if changes|length != 1 }} changed in ForeFlight</h2>
+  <p class="hint">Your latest import has a new version of {{ "these flights" if changes|length != 1 else "this flight" }}. Use ForeFlight's version to replace the old copy (costs you entered here carry over), or keep both if they really are two flights.</p>
+  {% for ch in changes %}
+  <div class="change">
+    <p><b>{{ ch.new.date|pretty_date }}</b> {{ ch.new.aircraft }} {{ ch.new|route }}</p>
+    <table class="plain small"><thead><tr><th>Changed</th><th>Before</th><th>ForeFlight now</th></tr></thead>
+      <tbody>{% for d in ch.diffs[:8] %}<tr><td>{{ d.label }}</td><td>{{ d.old if d.old not in (none, "") else "-" }}</td><td><b>{{ d.new if d.new not in (none, "") else "-" }}</b></td></tr>{% endfor %}</tbody></table>
+    <div class="actions">
+      <form method="post" action="/data/changes/{{ ch.id }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="keep" value="new"><button class="btn primary" type="submit">Use ForeFlight's version</button></form>
+      <form method="post" action="/data/changes/{{ ch.id }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="keep" value="both"><button class="btn" type="submit">Keep both</button></form>
+    </div>
+  </div>
+  {% endfor %}
+  {% if changes|length > 1 %}<form method="post" action="/data/changes/0"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="keep" value="new"><button class="btn" type="submit">Use ForeFlight's version for all {{ changes|length }}</button></form>{% endif %}
+</section>
+{% endif %}
 {% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
 {% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
 <div class="two">

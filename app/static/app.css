@@ -542,3 +542,25 @@ table.mins-check { margin-top: 6px; }
 .flagged li b { font-family: var(--num); white-space: nowrap; }
 .flagged.open li span:first-child::before { content: "\25CB  "; color: var(--amber); }
 @media (max-width: 560px) { .slide { padding: 20px 16px 16px; } .result-head { flex-direction: column; align-items: flex-start; } .answers .answer { min-width: 0; flex: 1; } }
+
+/* ---------- reports, quick add, sync notices ---------- */
+table.grid8710 th.n, table.grid8710 td.n { min-width: 92px; }
+table.grid8710 tbody tr:nth-child(even) td { background: var(--panel-2); }
+details.audit { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-top: 10px; }
+details.audit > summary { cursor: pointer; font-weight: 600; }
+details.audit .statuslist { margin-top: 8px; }
+details.audit .statuslist li .small { text-align: right; max-width: 70ch; }
+.sev { display: inline-block; font: 700 .6875rem var(--sans); text-transform: uppercase; letter-spacing: .05em; padding: 1px 7px; border-radius: 5px; margin-right: 6px; color: #fff; }
+.sev.error { background: var(--red); } .sev.warning { background: #b8860b; } .sev.info { background: var(--neutral); }
+.ins-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); margin: 10px 0 6px; }
+.ins-grid > div { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; display: grid; gap: 2px; }
+.ins-grid .lbl { color: var(--soft); font-size: .8125rem; } .ins-grid b { font: 600 1.35rem var(--num); }
+.quick { max-width: 640px; }
+.quick-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 8px 0 12px; }
+.kind { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 0 0 12px; display: grid; gap: 4px; }
+.kind legend { font-weight: 600; font-size: .875rem; padding: 0 6px; }
+.kind label { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.kind input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
+.notice.warnbox { border-color: var(--amber); }
+.change { border-top: 1px solid var(--line); padding: 12px 0; }
+.change .actions form { margin: 0; }

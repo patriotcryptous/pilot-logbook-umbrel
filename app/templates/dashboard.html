@@ -8,6 +8,9 @@
   </div>
 </header>
 
+{% if n_changes %}<div class="notice warnbox" role="status">{{ n_changes }} flight{{ "s" if n_changes != 1 }} changed in ForeFlight since an earlier import. <a href="/data#changes">Review them</a> so you don't end up with duplicates.</div>{% endif %}
+{% if t.flights and import_age is not none and import_age >= 14 %}<div class="notice warnbox" role="status">Your last ForeFlight import was {{ import_age }} days ago. <a href="/data">Import a fresh export</a> to keep this backup current.</div>{% endif %}
+{% if audit_errors %}<div class="notice err" role="status">The logbook check found {{ audit_errors }} entr{{ "ies" if audit_errors != 1 else "y" }} to fix. <a href="/reports?tab=check">See what</a></div>{% endif %}
 {% if not t.flights %}
 <div class="panel empty">
   <h2>Your logbook is empty</h2>

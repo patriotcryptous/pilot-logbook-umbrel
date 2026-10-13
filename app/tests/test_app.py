@@ -815,7 +815,8 @@ def test_scheduled_backups(client):
 
 
 def test_new_pages_render(client):
-    for path in ("/training", "/currency", "/airports", "/costs", "/preflight", "/preflight/minimums", "/more", "/settings", "/data", "/progress"):
+    for path in ("/training", "/currency", "/airports", "/costs", "/preflight", "/preflight/minimums", "/more",
+                 "/reports", "/reports?tab=check", "/reports?tab=insurance", "/flights/quick", "/settings", "/data", "/progress"):
         r = client.get(path)
         assert r.status_code == 200, path
         assert "onchange" not in r.text and "onclick" not in r.text, path
@@ -934,6 +935,84 @@ def test_hangar_hub_and_refs(client, monkeypatch):
     c = main.connect()
     assert not json.loads(core.profile_get(c)["refs"])["auto"]
     c.close()
+
+
+def test_reports_hours_check_and_insurance(client):
+    import reports
+    h = client.get("/reports?tab=hours").text
+    assert "Record of pilot time" in h and "Airplanes" in h and "Cross-country solo" in h
+    c = main.connect()
+    data = reports.hours_8710(c)
+    air = [r for r in data["rows"] if r["key"] == "airplane"][0]["values"]
+    tot = c.execute("SELECT SUM(f.total) FROM flights f JOIN aircraft a ON a.ident=f.aircraft "
+                    "WHERE a.aircraft_class LIKE 'airplane%' AND f.total > 0").fetchone()[0]
+    assert abs(air["total"] - tot) < 1e-6 and air["flights"] > 0
+    # a flight with PIC over total and dual with no instructor shows up in the check
+    c.execute("INSERT INTO flights(fingerprint, date, aircraft, total, pic, dual_received, instructor) "
+              "VALUES ('manual:audit1', '2026-03-03', 'N1TEST', 1.0, 1.5, 1.0, '')")
+    c.commit()
+    a = reports.audit(c)
+    kinds = {i["kind"] for i in a["issues"]}
+    assert "More than total time" in kinds and "No instructor name" in kinds and a["counts"]["error"] >= 1
+    page = client.get("/reports?tab=check").text
+    assert "More than total time" in page and "to fix" in page
+    assert "logbook check found" in client.get("/").text
+    c.execute("DELETE FROM flights WHERE fingerprint='manual:audit1'")
+    c.commit()
+    ins = reports.insurance(c)
+    c.close()
+    assert dict(ins["lines"])["Total flight time"] > 0 and ins["models"]
+    assert "Insurance summary" in client.get("/reports?tab=insurance").text
+    pdf = client.get("/export/insurance.pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+
+
+def test_quick_add(client):
+    assert 'name="kind"' in client.get("/flights/quick").text
+    r = client.post("/flights/quick", data={"csrf": token(client), "date": date.today().isoformat(), "aircraft": "n1test",
+                                             "from_apt": "i67", "to_apt": "khao", "total": "1:30", "day_landings": "2",
+                                             "kind": "solo", "comments": "quick one"})
+    assert r.status_code == 303 and "saved=" in r.headers["location"]
+    c = main.connect()
+    row = c.execute("SELECT * FROM flights WHERE comments='quick one'").fetchone()
+    c.close()
+    assert (row["aircraft"], row["total"], row["solo"], row["pic"], row["dual_received"]) == ("N1TEST", 1.5, 1.5, 1.5, 0)
+    assert row["all_landings"] == 2 and row["route"] == "I67 KHAO"
+    bad = client.post("/flights/quick", data={"csrf": token(client), "date": "x", "aircraft": "", "total": "zero"})
+    assert bad.status_code == 422 and "Enter the flight date" in bad.text
+    assert client.post("/flights/quick", data={"date": "2026-01-01"}).status_code == 403
+
+
+def test_foreflight_changes_and_sync_reminder(client):
+    import reports
+    rows = [{"Date": "2026-07-01", "AircraftID": "N1TEST", "From": "KAAA", "To": "KAAA", "TotalTime": "1.0",
+             "DualReceived": "1.0", "DayLandingsFullStop": "2", "AllLandings": "2", "PilotComments": "sync test"}]
+    client.post("/data/import", data={"csrf": token(client)}, files={"file": ("a.csv", make_csv(rows))})
+    c = main.connect()
+    old_id = c.execute("SELECT id FROM flights WHERE comments='sync test'").fetchone()[0]
+    features_mod = __import__("features")
+    features_mod.save_costs(c, old_id, {"aircraft_rate": 150.0, "instructor_rate": None, "fuel_gal": None,
+                                        "fuel_cost": 42.0, "other_cost": None})
+    c.close()
+    rows[0]["TotalTime"], rows[0]["DualReceived"] = "1.3", "1.3"
+    r = client.post("/data/import", data={"csrf": token(client)}, files={"file": ("b.csv", make_csv(rows))})
+    assert "edited in ForeFlight" in r.headers["location"].replace("+", " ")
+    page = client.get("/data").text
+    assert "changed in ForeFlight" in page and "Use ForeFlight" in page and "1.3" in page
+    assert "changed in ForeFlight since an earlier import" in client.get("/").text
+    c = main.connect()
+    cid, new_id = c.execute("SELECT id, new_id FROM flight_changes").fetchone()
+    c.close()
+    assert client.post(f"/data/changes/{cid}", data={"csrf": token(client), "keep": "new"}).status_code == 303
+    c = main.connect()
+    left = c.execute("SELECT id, total FROM flights WHERE comments='sync test'").fetchall()
+    cost = c.execute("SELECT fuel_cost FROM flight_costs WHERE flight_id=?", (new_id,)).fetchone()
+    # pretend the last import was 3 weeks ago
+    c.execute("UPDATE imports SET imported_at=?", ((date.today() - __import__("datetime").timedelta(days=21)).isoformat() + "T00:00:00+00:00",))
+    c.commit()
+    c.close()
+    assert [tuple(x) for x in left] == [(new_id, 1.3)] and cost[0] == 42.0
+    assert "last ForeFlight import was 21 days ago" in client.get("/").text
 
 
 def test_delete_all_requires_phrase(client):

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Quick add{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Quick add</h1><p class="sub">Log the basics right after you land. Fill in the rest later.</p></div>
+  <a class="btn" href="/flights/new">Full form</a></header>
+{% if saved %}<div class="notice" role="status">Flight saved. <a href="/flights/{{ saved }}/edit">Add more details</a></div>{% endif %}
+{% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form class="panel quick" method="post" action="/flights/quick">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="quick-grid">
+    <label class="field"><span>Date</span><input type="date" name="date" value="{{ f.get('date', '') }}" required></label>
+    <label class="field"><span>Aircraft</span><input name="aircraft" value="{{ f.get('aircraft', '') or '' }}" list="tails" autocapitalize="characters" autocomplete="off" required></label>
+    <label class="field"><span>From</span><input name="from_apt" value="{{ f.get('from_apt', '') or '' }}" autocapitalize="characters" maxlength="8"></label>
+    <label class="field"><span>To</span><input name="to_apt" value="{{ f.get('to_apt', '') or '' }}" autocapitalize="characters" maxlength="8"></label>
+    <label class="field"><span>Total time</span><input name="total" value="{{ f.get('total', '') }}" inputmode="decimal" placeholder="1.2" required></label>
+    <label class="field"><span>Day landings</span><input name="day_landings" value="{{ f.get('day_landings', '') }}" inputmode="numeric" placeholder="0"></label>
+  </div>
+  <datalist id="tails">{% for t in tails %}<option value="{{ t.ident }}">{% endfor %}</datalist>
+  <fieldset class="kind"><legend>Time was</legend>
+    {% for k, label in (("dual", "Dual with an instructor"), ("solo", "Solo"), ("pic", "PIC with passengers or alone")) %}
+    <label><input type="radio" name="kind" value="{{ k }}"{% if f.get('kind', 'dual') == k %} checked{% endif %}>{{ label }}</label>{% endfor %}
+  </fieldset>
+  <div class="quick-grid">
+    <label class="field"><span>Instructor (if dual)</span><input name="instructor" value="{{ f.get('instructor', '') }}"></label>
+    <label class="field"><span>Night landings</span><input name="night_landings" value="{{ f.get('night_landings', '') }}" inputmode="numeric" placeholder="0"></label>
+  </div>
+  <label class="flag"><input type="checkbox" name="night" value="1"{% if f.get('night') %} checked{% endif %}>The whole flight was at night</label>
+  <label class="field"><span>Remarks</span><textarea name="comments" maxlength="500" rows="2">{{ f.get('comments', '') }}</textarea></label>
+  <div class="actions"><button class="btn primary wide" type="submit">Save flight</button></div>
+  <p class="note">Total time counts as dual received, solo or PIC depending on your choice. Cross-country, instrument, Hobbs and the rest go on the full form.</p>
+</form>
+{% endblock %}

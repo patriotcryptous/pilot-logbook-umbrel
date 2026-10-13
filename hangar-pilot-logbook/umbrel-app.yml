@@ -2,7 +2,7 @@ manifestVersion: 1
 id: hangar-pilot-logbook
 category: files
 name: Pilot Logbook
-version: "1.5.1"
+version: "1.6.0"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
@@ -33,6 +33,6 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  The passenger briefing checklist is removed from the Preflight Risk Check, since that briefing happens in the airplane.
+  New Reports page: your hours laid out like the IACRA (8710-1) pilot time grid, a logbook check that flags entries to fix, and an insurance summary PDF. Quick add for logging the basics from your phone. Flights you edit in ForeFlight are spotted on import so you can replace the old copy, and the dashboard reminds you when your last import is two weeks old. The passenger briefing checklist is removed from the Preflight Risk Check.
 submitter: patriotcryptous
 submission: https://github.com/patriotcryptous/pilot-logbook-umbrel

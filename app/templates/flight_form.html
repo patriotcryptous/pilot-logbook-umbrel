@@ -25,7 +25,7 @@
 {% block content %}
 <header class="page-head">
   <div><h1>{{ "Edit flight" if editing else "Add a flight" }}</h1>
-  <p class="sub">Enter time as 1.3 or 1:18. Blank counts as zero. <a href="/settings">Choose which fields appear</a>.</p></div>
+  <p class="sub">Enter time as 1.3 or 1:18. Blank counts as zero. <a href="/settings">Choose which fields appear</a>{% if not editing %}, or use <a href="/flights/quick">quick add</a> for the basics{% endif %}.</p></div>
 </header>
 {% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
 <form method="post" action="{{ '/flights/%d/edit' % editing if editing else '/flights/new' }}">

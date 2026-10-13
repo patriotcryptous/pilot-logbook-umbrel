@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% macro cell(key, v) %}{% if key in h.counts %}{{ v|int if v else "" }}{% else %}{{ v|hb }}{% endif %}{% endmacro %}
+{% block content %}
+<header class="page-head"><div><h1>Reports</h1>
+  <p class="sub">Your logbook, totaled the way the FAA, your examiner and your insurer ask for it.</p></div>
+  {% if tab == "insurance" %}<a class="btn primary" href="/export/insurance.pdf">{{ icon("download") }}Download PDF</a>{% endif %}
+</header>
+<nav class="seg" aria-label="Reports">{% for k, label in tabs %}<a href="/reports?tab={{ k }}"{% if k == tab %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+
+{% if tab == "hours" %}
+<section class="panel">
+  <h2>Record of pilot time</h2>
+  <p class="hint">Laid out like the pilot time grid in IACRA (FAA Form 8710-1). Copy each box across when you apply for your checkride.</p>
+  <div class="scrollx">
+  <table class="plain grid8710">
+    <thead><tr><th></th>{% for r in h.rows %}<th class="n">{{ r.label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for key, label, expr in h.columns %}<tr><td>{{ label }}</td>{% for r in h.rows %}<td class="n">{{ cell(key, r["values"][key]) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% if h.sim.sessions %}<p class="hint spaced-top">Simulator or training device (the FFS/FTD/ATD row): {{ h.sim.total|hrs }} h over {{ h.sim.sessions }} session{{ "s" if h.sim.sessions != 1 }}, {{ h.sim.instrument|hrs }} h of it instrument.</p>{% endif %}
+  {% if h.unclassed.flights %}<p class="notice err">{{ h.unclassed.flights }} flight{{ "s" if h.unclassed.flights != 1 }} ({{ h.unclassed.hours|hrs }} h) are in aircraft with no category set, so they aren't in any column. Set the class in ForeFlight's aircraft list and import again.</p>{% endif %}
+  <p class="note">Cross-country, night and instrument lines are estimated from the overlap of the times logged on each flight, because a logbook has no separate "cross-country instruction" column. Check the numbers against your logbook before you sign the application.</p>
+</section>
+
+{% elif tab == "check" %}
+<section class="panel">
+  <h2>Logbook check</h2>
+  {% if not a.issues %}<p class="ok"><b>Nothing to fix.</b> {{ a.flights }} flights checked.</p>
+  {% else %}
+  <p class="hint">{{ a.flights }} flights checked: {% if a.counts.error %}<b class="bad">{{ a.counts.error }} to fix</b>, {% endif %}{{ a.counts.warning }} to look at, {{ a.counts.info }} worth knowing. Click a date to open the flight.</p>
+  {% for g in a.groups %}
+  <details class="audit {{ g.severity }}"{% if g.severity != "info" %} open{% endif %}>
+    <summary><span class="sev {{ g.severity }}">{{ {"error": "Fix", "warning": "Check", "info": "Note"}[g.severity] }}</span> {{ g.kind }} <span class="muted">({{ g.entries|length }})</span></summary>
+    <ul class="statuslist">{% for i in g.entries[:50] %}<li><span>{% if i.id %}<a href="/flights/{{ i.id }}/edit">{{ i.date|pretty_date }}</a> <span class="muted small">{{ i.aircraft }}</span>{% endif %}</span><span class="small">{{ i.text }}</span></li>{% endfor %}
+      {% if g.entries|length > 50 %}<li><span class="muted small">and {{ g.entries|length - 50 }} more</span></li>{% endif %}</ul>
+  </details>
+  {% endfor %}
+  {% endif %}
+  <p class="note">Checks: times larger than total time, dual without an instructor, cross-country flights without a route or a landing over 50 nm away, landing counts that don't add up, Hobbs that doesn't match, solo flights outside your recorded solo endorsements, duplicates and future dates. The check reads your logbook; it doesn't change anything.</p>
+</section>
+
+{% else %}
+<section class="panel">
+  <h2>Insurance summary</h2>
+  <p class="hint">What insurers ask for on an application or renewal, as of {{ ins.as_of|pretty_date }}. Download the PDF to attach it.</p>
+  <div class="ins-grid">{% for label, val in ins.lines %}<div><span class="lbl">{{ label }}</span><b>{{ val|int if label == "Landings" else val|hrs }}</b></div>{% endfor %}</div>
+  <h3 class="subhead">By make and model</h3>
+  <div class="scrollx"><table class="plain"><thead><tr><th>Make and model</th><th class="n">Total</th><th class="n">PIC</th><th class="n">Last 12 months</th><th class="n">Last 90 days</th><th class="n">Last flown</th></tr></thead>
+    <tbody>{% for m in ins.models %}<tr><td>{{ m.make }} {{ m.model }}</td><td class="n">{{ m.total|hrs }}</td><td class="n">{{ m.pic|hrs }}</td><td class="n">{{ m.last12|hrs }}</td><td class="n">{{ m.last90|hrs }}</td><td class="n">{{ m.last|pretty_date if m.last else "" }}</td></tr>{% endfor %}</tbody></table></div>
+  <p class="note">Retractable, tailwheel, complex, high-performance and turbine hours depend on how each aircraft is set up in your ForeFlight aircraft list.</p>
+</section>
+{% endif %}
+{% endblock %}

@@ -43,7 +43,7 @@
 <nav class="tabbar" aria-label="Main">
   <a href="/"{% if active == "dash" %} aria-current="page"{% endif %}>{{ icon("grid") }}Dashboard</a>
   <a href="/logbook"{% if active == "logbook" %} aria-current="page"{% endif %}>{{ icon("book") }}Logbook</a>
-  <a class="add" href="/flights/new"{% if active == "add" %} aria-current="page"{% endif %}>{{ icon("plus") }}Add</a>
+  <a class="add" href="/flights/quick"{% if active == "add" %} aria-current="page"{% endif %}>{{ icon("plus") }}Add</a>
   <a href="/progress"{% if active == "progress" %} aria-current="page"{% endif %}>{{ icon("target") }}Progress</a>
   <a href="/more"{% if active in MORE_KEYS %} aria-current="page"{% endif %}>{{ icon("more") }}More</a>
 </nav>
