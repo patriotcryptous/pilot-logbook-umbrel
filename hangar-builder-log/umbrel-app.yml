@@ -54,10 +54,11 @@ dependencies: []
 repo: https://github.com/patriotcryptous/builder-log-umbrel
 support: https://github.com/patriotcryptous/builder-log-umbrel/issues
 port: 8231
+icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-builder-log/icon.svg
 gallery:
-  - 1.jpg
-  - 2.jpg
-  - 3.jpg
+  - https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-builder-log/1.jpg
+  - https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-builder-log/2.jpg
+  - https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-builder-log/3.jpg
 path: ""
 defaultUsername: ""
 defaultPassword: ""
