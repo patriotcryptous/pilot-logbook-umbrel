@@ -43,6 +43,10 @@ Pilot Logbook is a personal record-keeping aid, provided as is, with no warranty
 
 This project isn't affiliated with, endorsed by or sponsored by ForeFlight or the FAA. ForeFlight is a trademark of its owner. Airport data comes from [airportsdata](https://github.com/mborsetti/airportsdata) (MIT License) and offline map boundaries from [us-atlas](https://github.com/topojson/us-atlas) (US Census Bureau data, ISC License). The interactive map uses [Leaflet](https://leafletjs.com) (BSD 2-Clause), with tiles from [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors and [OpenTopoMap](https://opentopomap.org) (CC-BY-SA). Weather comes from the [NOAA Aviation Weather Center](https://aviationweather.gov) and runway data from [OurAirports](https://ourairports.com/data/) (public domain). Always get an official weather briefing before you fly.
 
+## License
+
+Pilot Logbook is released under the [MIT License](LICENSE). Bundled third-party pieces keep their own licenses: the Barlow fonts (SIL Open Font License 1.1, `app/static/fonts`), Leaflet (BSD 2-Clause, `app/static/leaflet`), airport data from airportsdata (MIT) and map boundaries from us-atlas (ISC, US Census Bureau data) in `app/geo`, and runway data from OurAirports (public domain). The FAR and AIM the app downloads are US government works.
+
 ## Credits
 
 Built by [patriotcryptous](https://github.com/patriotcryptous) with [Claude](https://claude.ai), Anthropic's AI model, which wrote much of the code.
