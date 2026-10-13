@@ -648,7 +648,7 @@ def alert_text(it):
     when = "today" if d == 0 else "tomorrow" if d == 1 else f"in {d} days"
     return (f"{it['label']}: expires {when}",
             f"{it['label']} is good through {it['through'].strftime('%b %-d, %Y')}. "
-            "Open your Pilot Logbook for details.")
+            "Open your Pilot Log for details.")
 
 
 def mark_sent(db, keys):

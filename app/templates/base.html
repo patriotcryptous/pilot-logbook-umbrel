@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>{% block title %}Dashboard{% endblock %} - Pilot Logbook</title>
+<title>{% block title %}Dashboard{% endblock %} - Pilot Log</title>
 <link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
 {% block head %}{% endblock %}
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
@@ -19,7 +19,7 @@
 <rect x="98" y="35" width="60" height="8" rx="4" fill="#14100C"/></g></svg>{% endset %}
 <div class="shell">
   <aside class="rail">
-    <a class="brand" href="/">{{ mark }}Pilot Logbook</a>
+    <a class="brand" href="/">{{ mark }}Pilot Log</a>
     <a class="btn primary cta" href="/flights/new">{{ icon("plus") }}Add flight</a>
     <nav aria-label="Main">
       {% for key, href, label, ic in nav if key != "add" %}
@@ -36,7 +36,7 @@
     </form>
   </aside>
   <div>
-    <header class="topbar"><a class="brand" href="/">{{ mark }}Pilot Logbook</a></header>
+    <header class="topbar"><a class="brand" href="/">{{ mark }}Pilot Log</a></header>
     <main class="main">{% block content %}{% endblock %}</main>
   </div>
 </div>

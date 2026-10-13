@@ -1,5 +1,5 @@
 name: Idea or feature request
-description: Suggest something that would make Pilot Logbook better
+description: Suggest something that would make Pilot Log better
 labels: [enhancement]
 body:
   - type: textarea

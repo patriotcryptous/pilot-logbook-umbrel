@@ -1,12 +1,12 @@
 manifestVersion: 1
 id: hangar-pilot-logbook
 category: files
-name: Pilot Logbook
-version: "1.6.1"
+name: Pilot Log
+version: "1.6.2"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
-  Your logbook is a record of every hour you've worked for, and it deserves a backup you control. Pilot Logbook keeps a complete copy on your own umbrelOS device: a safe home for your paper logbook, and your own copy of your ForeFlight logbook, so your records don't live only in someone else's cloud account or subscription.
+  Your logbook is a record of every hour you've worked for, and it deserves a backup you control. Pilot Log keeps a complete copy on your own umbrelOS device: a safe home for your paper logbook, and your own copy of your ForeFlight logbook, so your records don't live only in someone else's cloud account or subscription.
 
 
   Photograph your paper logbook pages and file them by date, so a lost or damaged logbook isn't the end of your records. Import your ForeFlight logbook as a CSV whenever you like (importing again only adds new flights) and export it back out in ForeFlight's own format at any time, so you can always move your data wherever you want.
@@ -33,6 +33,6 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Logbook check: mark a finding as correct (or a whole group at once) and it stops being flagged, unless you edit that flight later. Endorsements: superseded and archived endorsements are hidden behind Show history, and expired ones can be archived.
+  The app is now called Pilot Log. Nothing else changes, and your flights, documents and settings stay as they are.
 submitter: patriotcryptous
 submission: https://github.com/patriotcryptous/pilot-logbook-umbrel

@@ -257,7 +257,7 @@ def build_far_pdf(parts_xml, version, footer=None):
     for title, part, desc, _ in parts_xml:
         story.append(Paragraph(f"<b>{title} CFR part {part}</b> &nbsp; {escape(desc)}", S["toc"]))
     story += [Spacer(1, 24),
-              Paragraph("Assembled automatically by your Pilot Logbook from www.ecfr.gov, the Office of the Federal "
+              Paragraph("Assembled automatically by your Pilot Log from www.ecfr.gov, the Office of the Federal "
                         "Register's continuously updated online edition of the Code of Federal Regulations. It is "
                         "authoritative but not an official legal edition of the CFR. Use the bookmarks to jump to a "
                         "part, subpart or section. Check ecfr.gov for amendments after the date above.", S["small"])]

@@ -1,4 +1,4 @@
-/* Pilot Logbook. Glass-cockpit dashboard look: cyan = selected / dual, magenta = solo / active,
+/* Pilot Log. Glass-cockpit dashboard look: cyan = selected / dual, magenta = solo / active,
    green = valid, amber = caution, red = expired. Fonts are bundled; nothing loads from the internet. */
 @font-face { font-family: "Barlow"; font-weight: 400; font-style: normal; font-display: swap; src: url("/static/fonts/barlow-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "Barlow"; font-weight: 500; font-style: normal; font-display: swap; src: url("/static/fonts/barlow-latin-500-normal.woff2") format("woff2"); }

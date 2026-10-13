@@ -1,4 +1,4 @@
-"""Pilot Logbook - self-hosted, single-pilot web app for umbrelOS.
+"""Pilot Log - self-hosted, single-pilot web app for umbrelOS.
 
 No accounts (umbrelOS's app proxy already sits in front), no telemetry. Pages are plain HTML except the
 Airports route map, which runs bundled Leaflet over OpenStreetMap/OpenTopoMap tiles. The server itself only
@@ -67,7 +67,7 @@ async def lifespan(_app):
     _stop.set()
 
 
-app = FastAPI(title="Pilot Logbook", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app = FastAPI(title="Pilot Log", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
@@ -1613,7 +1613,7 @@ async def alerts_test(request: Request):
     if not st["url"]:
         return back("/settings", alert_error="Save an alert address first.")
     try:
-        features.send_alert(st, "Pilot Logbook test", "Expiry alerts from your Pilot Logbook will arrive here.")
+        features.send_alert(st, "Pilot Log test", "Expiry alerts from your Pilot Log will arrive here.")
     except Exception as e:  # noqa: BLE001 - show the pilot what went wrong
         return back("/settings", alert_error=f"The test alert didn't go through: {str(e)[:160]}")
     return back("/settings", alerts="sent")

@@ -1,5 +1,5 @@
 name: Something isn't working
-description: Report a bug or a problem with Pilot Logbook
+description: Report a bug or a problem with Pilot Log
 labels: [bug]
 body:
   - type: markdown
@@ -17,7 +17,7 @@ body:
     id: version
     attributes:
       label: App version
-      description: Shown on the Pilot Logbook page in the umbrelOS App Store.
+      description: Shown on the Pilot Log page in the umbrelOS App Store.
       placeholder: "1.3.0"
   - type: input
     id: device
