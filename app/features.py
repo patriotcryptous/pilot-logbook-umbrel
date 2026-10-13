@@ -771,3 +771,151 @@ def map_payload(stats, nearby_limit=500):
     others = [{"code": ap["lid"] or ap["icao"], "name": ap["name"], "lat": ap["lat"], "lon": ap["lon"]}
               for ap in near[:nearby_limit]]
     return json.dumps({"airports": mine, "legs": legs, "others": others}, separators=(",", ":")).replace("</", "<\\/")
+
+
+# ----------------------------------------------------------------------------- progress for each certificate
+
+CERTS = [("sport", "Sport", "61.313(a)(1)", "Sport pilot certificate, airplane single-engine"),
+         ("private", "Private", "61.109(a)", "Private pilot certificate, airplane single-engine"),
+         ("instrument", "Instrument", "61.65(d)", "Instrument rating, airplane"),
+         ("commercial", "Commercial", "61.129(a)", "Commercial pilot certificate, airplane single-engine")]
+CERT_KEYS = [k for k, *_ in CERTS]
+
+_SEL = "f.aircraft IN (SELECT ident FROM aircraft WHERE aircraft_class LIKE 'airplane%single%')"
+_AIRPLANE = "f.aircraft IN (SELECT ident FROM aircraft WHERE aircraft_class LIKE 'airplane%')"
+_COMPLEX = ("f.aircraft IN (SELECT ident FROM aircraft WHERE upper(COALESCE(complex,'')) IN ('TRUE','1','YES') "
+            "OR upper(COALESCE(taa,'')) IN ('TRUE','1','YES'))")
+_INSTR = "(COALESCE(f.sim_instr,0) + COALESCE(f.actual_instr,0))"
+
+
+def _sum(db, expr, cond="1=1", since=None):
+    extra = " AND f.date>=?" if since else ""
+    return db.execute(f"SELECT COALESCE(SUM({expr}),0) FROM flights f WHERE {cond}{extra}",
+                      (since,) if since else ()).fetchone()[0]
+
+
+def _approaches(r):
+    return sum(1 for i in range(1, 7) if (r[f"approach{i}"] or "").strip())
+
+
+def _best_flight(rows, test, score):
+    """The flight that meets `test`, or the one that comes closest by `score`."""
+    best, best_s = None, None
+    for r in rows:
+        g = flight_geometry(r)
+        ok, s = test(r, g), score(r, g)
+        key = (ok, s)
+        if best is None or key > best_s:
+            best, best_s = (r, g, ok), key
+    return best
+
+
+def _check(label, far, rows, test, score, describe, empty):
+    b = _best_flight(rows, test, score)
+    if not b:
+        return {"label": label, "far": far, "met": False, "detail": empty, "date": None}
+    r, g, ok = b
+    return {"label": label, "far": far, "met": ok, "date": r["date"] if ok else None,
+            "detail": f'{"Met" if ok else "Closest so far"}: {r["date"]}, {_route_label(r)}. {describe(r, g)}'}
+
+
+def _prep(db, need, today, label, far, cond="1=1", instrument=False, by_date=False):
+    start = (today - timedelta(days=61)) if by_date else (end_of_month(today, -3) + timedelta(days=1))
+    expr = f"MIN({_INSTR}, COALESCE(f.dual_received,0))" if instrument else "COALESCE(f.dual_received,0)"
+    h = _sum(db, expr, cond, start.isoformat())
+    return {"label": label, "far": far, "met": h >= need, "have": h, "need": need,
+            "detail": f'If your checkride is {"today" if by_date else "this month"}: {h:.1f} h since '
+                      f'{start.strftime("%b %-d")}. Your instructor confirms it was test preparation.'}
+
+
+def _from_origin(g):
+    if not g["points"]:
+        return 0.0
+    o = g["points"][0][1]
+    return max((leg_nm(o, ap) for _, ap in g["points"][1:]), default=0.0)
+
+
+def progress_for(db, cert="private", today=None):
+    today = today or date.today()
+    cert = cert if cert in CERT_KEYS else "private"
+    meta = {k: (label, far, title) for k, label, far, title in CERTS}[cert]
+    rows = db.execute(f"SELECT f.* FROM flights f WHERE {_SEL} ORDER BY f.date").fetchall()
+    out = {"cert": cert, "label": meta[0], "far": meta[1], "title": meta[2], "tracked": [], "checks": [], "untracked": []}
+    t = out["tracked"]
+    fs = lambda r: (r["day_landings"] or 0) + (r["night_landings"] or 0)  # noqa: E731
+
+    if cert == "sport":
+        t += [("Total flight time", _sum(db, "f.total"), 20, "hrs"),
+              ("Flight training with an instructor", _sum(db, "f.dual_received", _SEL), 15, "hrs"),
+              ("Solo flight", _sum(db, "f.solo", _SEL), 5, "hrs"),
+              ("Cross-country flight training", _sum(db, "MIN(f.xc, f.dual_received)", _SEL), 2, "hrs"),
+              ("Takeoffs and landings to a full stop", _sum(db, "COALESCE(f.day_landings,0)+COALESCE(f.night_landings,0)", _SEL), 10, "ldg")]
+        out["checks"] = [
+            _check("Solo cross-country of 75 nm, full-stop landings at 2 points, one leg of 25 nm", "61.313(a)(1)(iii)",
+                   [r for r in rows if (r["solo"] or 0) > 0 and (r["xc"] or 0) > 0],
+                   lambda r, g: g["distance"] >= 75 and g["stops"] >= 2 and fs(r) >= 2 and g["longest_leg"] >= 25,
+                   lambda r, g: (g["distance"] >= 75) + (g["stops"] >= 2) + (g["longest_leg"] >= 25) + min(g["distance"], 75) / 1000,
+                   lambda r, g: f'{g["distance"]:.0f} nm total, {g["stops"]} landing points, longest leg {g["longest_leg"]:.0f} nm.',
+                   "No solo cross-country flight logged yet."),
+            _prep(db, 2, today, "2 hours of instruction preparing for the practical test", "61.313(a)(1)(iv)", _SEL)]
+    elif cert == "private":
+        out.update(progress := core.progress_private_asel(db))
+        out["cert"], out["label"], out["far"], out["title"] = cert, meta[0], meta[1], meta[2]
+        out["checks"] = specific_requirements(db, today)
+        out["untracked"] = []
+    elif cert == "instrument":
+        t += [("Cross-country time as pilot in command", _sum(db, "MIN(f.xc, f.pic)"), 50, "hrs"),
+              ("...of which in an airplane", _sum(db, "MIN(f.xc, f.pic)", _AIRPLANE), 10, "hrs"),
+              ("Actual or simulated instrument time", _sum(db, _INSTR), 40, "hrs"),
+              ("...of which with an instrument instructor", _sum(db, f"MIN({_INSTR}, f.dual_received)"), 15, "hrs")]
+        ifr = [r for r in db.execute(f"SELECT f.* FROM flights f WHERE {_AIRPLANE} ORDER BY f.date")
+               if (r["dual_received"] or 0) > 0 and ((r["ifr"] or 0) > 0 or (r["sim_instr"] or 0) + (r["actual_instr"] or 0) > 0)]
+        out["checks"] = [
+            _check("IFR cross-country with an instructor: 250 nm, an approach at each airport, three kinds of approaches",
+                   "61.65(d)(2)(ii)", ifr,
+                   lambda r, g: g["distance"] >= 250 and _approaches(r) >= max(3, g["stops"]),
+                   lambda r, g: (g["distance"] >= 250) + (_approaches(r) >= 3) + min(g["distance"], 250) / 1000,
+                   lambda r, g: f'{g["distance"]:.0f} nm, {_approaches(r)} approach{"es" if _approaches(r) != 1 else ""} logged '
+                                f'at {g["stops"]} airport{"s" if g["stops"] != 1 else ""}.',
+                   "No instrument flight with an instructor logged yet."),
+            _prep(db, 3, today, "3 hours of instrument training with an instructor before the test", "61.65(d)(2)(i)",
+                  _AIRPLANE, instrument=True, by_date=True)]
+        out["untracked"] = ["The IFR cross-country must be flown under IFR on a filed flight plan, with three different "
+                            "kinds of approaches using navigation systems; the logbook can't tell the kinds apart"]
+    else:  # commercial
+        t += [("Total flight time as a pilot", _sum(db, "f.total"), 250, "hrs"),
+              ("Powered aircraft", _sum(db, "f.total - COALESCE(f.sim_flight,0)"), 100, "hrs"),
+              ("...of which in airplanes", _sum(db, "f.total", _AIRPLANE), 50, "hrs"),
+              ("Pilot in command", _sum(db, "f.pic"), 100, "hrs"),
+              ("...of which in airplanes", _sum(db, "f.pic", _AIRPLANE), 50, "hrs"),
+              ("Cross-country as pilot in command", _sum(db, "MIN(f.xc, f.pic)"), 50, "hrs"),
+              ("...of which in airplanes", _sum(db, "MIN(f.xc, f.pic)", _AIRPLANE), 10, "hrs"),
+              ("Training with an instructor", _sum(db, "f.dual_received", _AIRPLANE), 20, "hrs"),
+              ("Instrument training", _sum(db, f"MIN({_INSTR}, f.dual_received)", _AIRPLANE), 10, "hrs"),
+              ("...of which in a single-engine airplane", _sum(db, f"MIN({_INSTR}, f.dual_received)", _SEL), 5, "hrs"),
+              ("Training in a complex or technically advanced airplane", _sum(db, "f.dual_received", _COMPLEX), 10, "hrs"),
+              ("Solo (or performing PIC duties with an instructor)", _sum(db, "f.solo", _SEL), 10, "hrs"),
+              ("Night VFR solo time", _sum(db, "MIN(f.night, f.solo)", _SEL), 5, "hrs")]
+        dual = [r for r in rows if (r["dual_received"] or 0) > 0 and (r["total"] or 0) >= 2]
+        out["checks"] = [
+            _check("2-hour day cross-country with an instructor, over 100 nm straight-line from departure",
+                   "61.129(a)(3)(iii)", [r for r in dual if (r["night"] or 0) < (r["total"] or 0)],
+                   lambda r, g: _from_origin(g) > 100, lambda r, g: _from_origin(g),
+                   lambda r, g: f'{r["total"]:.1f} h, farthest point {_from_origin(g):.0f} nm from departure.',
+                   "No 2-hour dual flight logged yet."),
+            _check("2-hour night cross-country with an instructor, over 100 nm straight-line from departure",
+                   "61.129(a)(3)(iv)", [r for r in dual if (r["night"] or 0) > 0],
+                   lambda r, g: _from_origin(g) > 100 and (r["night"] or 0) >= 2, lambda r, g: _from_origin(g),
+                   lambda r, g: f'{r["night"]:.1f} h night, farthest point {_from_origin(g):.0f} nm from departure.',
+                   "No 2-hour dual night flight logged yet."),
+            _check("Solo cross-country of 300 nm, landings at 3 points, one 250 nm straight-line from departure",
+                   "61.129(a)(4)(i)", [r for r in rows if (r["solo"] or 0) > 0 or (r["pic"] or 0) > 0],
+                   lambda r, g: g["distance"] >= 300 and g["stops"] >= 3 and _from_origin(g) >= 250,
+                   lambda r, g: (g["distance"] >= 300) + (g["stops"] >= 3) + (_from_origin(g) >= 250) + min(g["distance"], 300) / 1000,
+                   lambda r, g: f'{g["distance"]:.0f} nm total, {g["stops"]} landing points, farthest {_from_origin(g):.0f} nm from departure.',
+                   "No solo or PIC cross-country logged yet."),
+            _prep(db, 3, today, "3 hours of instruction preparing for the practical test", "61.129(a)(3)(v)", _SEL)]
+        out["untracked"] = ["10 night takeoffs and landings at an airport with an operating control tower (61.129(a)(4)(ii)); "
+                            "the logbook has no night towered landing count",
+                            "Complex or TAA time counts only if the aircraft is marked complex or TAA in your ForeFlight aircraft list"]
+    return out

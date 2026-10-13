@@ -101,7 +101,7 @@ def build(prof, progress, totals, endorsements, documents, currency, reminders, 
                         (", ".join(f"{a['ident']} ({hrs(a['hours'])} h)" for a in aircraft[:8]) or "none"), S["small"]))
 
     # 61.109
-    st.append(Paragraph("Aeronautical experience, private pilot ASEL (FAR 61.109(a))", S["h2"]))
+    st.append(Paragraph(f"Aeronautical experience: {progress.get('title', 'private pilot ASEL')} (FAR {progress.get('far', '61.109(a)')})", S["h2"]))
     data = [["Requirement", "Logged", "Minimum", "Status"]]
     for label, have, need, unit in progress["tracked"]:
         val = hrs(have) if unit == "hrs" else str(int(have))

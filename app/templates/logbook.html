@@ -9,6 +9,7 @@
   <label>Year<select name="year"><option value="">All</option>{% for y in years %}<option{% if y == year %} selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
   <label>Aircraft<select name="aircraft"><option value="">All</option>{% for t in tails %}<option{% if t == aircraft %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
   <label class="grow">Search remarks, routes and instructors<input type="search" name="q" value="{{ q }}" placeholder="solo, crosswind, KMIE"></label>
+  <input type="hidden" name="per" value="{{ per }}">
   <button class="btn" type="submit">Filter</button>
   {% if filtered %}<a class="btn" href="/logbook">Clear</a>{% endif %}
 </form>
@@ -59,13 +60,17 @@
   {% endfor %}
 </div>
 
-{% if pages > 1 %}
 <div class="pager">
-  {% if page > 1 %}<a href="/logbook?year={{ year }}&amp;aircraft={{ aircraft }}&amp;q={{ q|urlencode }}&amp;page={{ page - 1 }}">Newer</a>{% endif %}
-  <span class="muted">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a href="/logbook?year={{ year }}&amp;aircraft={{ aircraft }}&amp;q={{ q|urlencode }}&amp;page={{ page + 1 }}">Older</a>{% endif %}
+  <span class="muted">{% if total_rows %}Showing {{ first }}&ndash;{{ last }} of {{ total_rows }} flight{{ "s" if total_rows != 1 }}{% endif %}</span>
+  {% if pages > 1 %}
+  <nav class="pages" aria-label="Pages">
+    {% if page > 1 %}<a href="/logbook?{{ qs }}&amp;per={{ per }}&amp;page=1" aria-label="First page">&laquo;</a><a href="/logbook?{{ qs }}&amp;per={{ per }}&amp;page={{ page - 1 }}">Newer</a>{% endif %}
+    {% for n in range([1, page - 2]|max, [pages, page + 2]|min + 1) %}<a href="/logbook?{{ qs }}&amp;per={{ per }}&amp;page={{ n }}"{% if n == page %} aria-current="page"{% endif %}>{{ n }}</a>{% endfor %}
+    {% if page < pages %}<a href="/logbook?{{ qs }}&amp;per={{ per }}&amp;page={{ page + 1 }}">Older</a><a href="/logbook?{{ qs }}&amp;per={{ per }}&amp;page={{ pages }}" aria-label="Last page">&raquo;</a>{% endif %}
+  </nav>
+  {% endif %}
+  <nav class="per" aria-label="Flights per page"><span class="muted">Show</span>{% for n in per_choices %}<a href="/logbook?{{ qs }}&amp;per={{ n }}"{% if n == per %} aria-current="true"{% endif %}>{{ "All" if n == "all" else n }}</a>{% endfor %}</nav>
 </div>
-{% endif %}
 {% else %}
 <div class="panel empty">
   {% if filtered %}<p>No flights match that filter.</p><a class="btn" href="/logbook">Show all flights</a>

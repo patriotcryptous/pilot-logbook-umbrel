@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_hangar_macros.html" import badge, catchip %}
+{% from "_hangar_tabs.html" import hangar_tabs with context %}
 {% block title %}Document Hangar{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -7,8 +8,33 @@
     <p class="sub">Insurance, certificates, manuals, notes, photos and videos, stored privately on your own server. {{ info.count }} item{{ "s" if info.count != 1 }}, {{ info.size }}.</p></div>
   <div class="actions"><a class="btn" href="/hangar/note/new">{{ icon("file") }}New note</a><a class="btn primary" href="/hangar/add">{{ icon("upload") }}Add documents</a></div>
 </header>
+{{ hangar_tabs("docs") }}
 {% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
 {% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
+
+<section class="refs" aria-labelledby="refs-h">
+  <div class="refs-head">
+    <h2 id="refs-h">{{ icon("book") }}FAR/AIM</h2>
+    <form method="post" action="/hangar/refs/settings" class="refs-auto">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="flag"><input type="checkbox" name="auto" value="1"{% if rs.auto %} checked{% endif %}>Keep current automatically</label>
+      <button class="btn small-btn" type="submit">Save</button>
+    </form>
+  </div>
+  <div class="refs-items">
+    {% for key, label, src in (("far", "Federal Aviation Regulations", "eCFR"), ("aim", "Aeronautical Information Manual", "faa.gov")) %}
+    {% set d = ref_docs.get(key) %}
+    {% if d %}<a class="ref" href="/hangar/{{ d.id }}/file" target="_blank" rel="noreferrer"><b>{{ key|upper }}</b><span>{{ d.title.split(": ", 1)[-1] }}</span><small>{{ d.size }} &middot; PDF</small></a>
+    {% else %}<div class="ref missing"><b>{{ key|upper }}</b><span>{{ label }}</span><small>{% if rs.running %}Downloading from {{ src }}&hellip;{% else %}Not downloaded yet{% endif %}</small></div>{% endif %}
+    {% endfor %}
+  </div>
+  <form method="post" action="/hangar/refs/update" class="refs-foot">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="muted small">{% if rs.running %}Checking for new editions now&hellip;{% elif rs.last_check %}Last checked {{ rs.last_check[:10] }}.{% else %}Downloads on first start, then checks weekly.{% endif %}
+      {% if rs.error %}<span class="bad">{{ rs.error }}</span>{% endif %}</span>
+    <button class="linkbtn plain-link" type="submit"{% if rs.running %} disabled{% endif %}>Check for updates now</button>
+  </form>
+</section>
 
 {% if attn %}
 <section class="panel attention" aria-label="Needs attention">

@@ -657,7 +657,7 @@ def test_personal_minimums(client):
     assert r.status_code == 303
     assert 'value="3000"' in client.get("/preflight/minimums").text
     # typed-in METAR works with no internet
-    page = client.get("/preflight?check=1&profile=solo&airport=ZZZZ9&runway=27&metar=KLUK+121853Z+24012G20KT+10SM+BKN045").text
+    page = client.get("/preflight?check=1&at=weather&profile=solo&airport=ZZZZ9&runway=27&metar=KLUK+121853Z+24012G20KT+10SM+BKN045").text
     assert "Couldn" in page and "No-go" in page
     assert client.post("/preflight/minimums", data={"csrf": token(client), "solo_wind": "lots"}).status_code == 422
 
@@ -684,34 +684,42 @@ def test_preflight_live_weather_and_risk(client, monkeypatch):
                              "clouds": [{"cover": "BKN", "base": 2500}]}],
               [{"icaoId": "KLUK", "rawTAF": "TAF KLUK 121559Z 1216/1312 24012KT P6SM BKN030", "lat": 39.1, "lon": -84.42}])
     client.post("/preflight/minimums", data={"csrf": token(client), "solo_ceiling": "3000", "solo_crosswind": "8"})
-    page = client.get("/preflight?check=1&airport=LUK&profile=solo&flight_h=1&fob=15&gph=8").text
+    base = "/preflight?check=1&airport=LUK&profile=solo&flight_h=1&fob=15&gph=8"
+    page = client.get(base + "&at=weather").text
     assert "KLUK 121553Z" in page and "TAF KLUK" in page and "cat-mvfr" in page
-    assert "Best" in page and "25" in page          # runway 25 is best for a 240 wind
-    assert "Outside" in page  # 3000 ft ceiling limit vs 2500
-    assert 'name="r_mvfr" value="1" checked' in page and 'name="r_fuel_tight" value="1" checked' in page
+    assert "Runway 25</b> (best for the wind)" in page
+    assert "outside your minimums" in page          # 3000 ft ceiling limit vs 2500
     assert "Density altitude" in page and "Sunrise" in page
-    # unticking an auto item sticks on the next submit
-    again = client.get("/preflight?check=1&airport=LUK&profile=solo&risk_submitted=1&risk_for=LUK%7Cwx").text
-    assert 'name="r_mvfr" value="1" checked' not in again
+    # one question per slide; the weather, fuel and logbook answer some for you
+    q1 = client.get(base + "&at=q:ill").text
+    assert "Are you feeling ill" in q1 and 'name="a_ill" value="y"' in q1 and "Step " in q1
+    assert client.get(base + "&at=q:mvfr").text.count("Marginal VFR") == 0  # not asked: the METAR answers it
+    res = client.get(base + "&at=result&a_stress=y&a_ill=n").text
+    assert "Marginal VFR" in res and "Planned to land with less than 1 hour" in res and "Under stress" in res
+    assert "I&#39;m ill" not in res and "Still to do" in res
+    cl = client.get(base + "&at=cl:0").text
+    assert "Preflight action" in cl and 'name="cl_0_0"' in cl
+    done = client.get(base + "&at=result&cl_0_0=1&cl_0_1=1").text
+    assert "Weather reports and forecasts for the whole route" not in done.split("Still to do")[1]
     # no weather at the field: nearest station within 30 nm
     _fake_awc(monkeypatch, [{"icaoId": "KHAO", "obsTime": obs, "wdir": 0, "wspd": 0, "visib": 10, "temp": 15,
                              "dewp": 5, "altim": 1013, "fltCat": "VFR", "lat": 39.36, "lon": -84.52,
                              "rawOb": "KHAO 121555Z 00000KT 10SM CLR 15/05 A2992", "name": "Hamilton", "clouds": []}])
-    near = client.get("/preflight?check=1&airport=I67").text
+    near = client.get("/preflight?check=1&at=weather&airport=I67").text
     assert "No weather is reported at I67" in near and "KHAO" in near and "Calm" in near
     # the service is down: say so and keep going
     monkeypatch.setattr(preflight, "_get", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
     preflight._cache.clear()
-    down = client.get("/preflight?check=1&airport=KLUK").text
-    assert "reach aviationweather.gov" in down and "PAVE" in down
+    down = client.get("/preflight?check=1&at=weather&airport=KLUK").text
+    assert "reach aviationweather.gov" in down and "Start the PAVE questions" in down
     # save to history and delete
     _fake_awc(monkeypatch, [{"icaoId": "KLUK", "obsTime": obs, "wdir": 240, "wspd": 5, "visib": "10+", "temp": 20,
                              "dewp": 10, "altim": 1013, "fltCat": "VFR", "lat": 39.1, "lon": -84.42,
                              "rawOb": "KLUK 1 24005KT", "name": "Lunken", "clouds": []}])
-    r = client.post("/preflight/save", data={"csrf": token(client), "airport": "KLUK", "profile": "solo", "r_stress": "1"})
+    r = client.post("/preflight/save", data={"csrf": token(client), "airport": "KLUK", "profile": "solo", "a_stress": "y"})
     assert r.status_code == 303 and "saved=1" in r.headers["location"]
     page = client.get(r.headers["location"]).text
-    assert "Recent checks" in page and "Saved to your preflight history" in page
+    assert "Recent checks" in page and "Saved to your preflight history" in page and "Under stress" in page
     c = main.connect()
     hid, total = c.execute("SELECT id, risk_total FROM preflight_checks ORDER BY id DESC").fetchone()
     c.close()
@@ -864,6 +872,68 @@ def test_towered_fills_non_towered_on_save(client):
     row = c.execute("SELECT landing_fs_day, landing_fs_day_towered FROM flights WHERE comments='towered split'").fetchone()
     c.close()
     assert tuple(row) == (3, 2)
+
+
+def test_logbook_pages_and_size(client):
+    for i in range(12):
+        _flight(client, date=f"2025-01-{i + 1:02d}", comments=f"page test {i}")
+    html = client.get("/logbook?per=10").text
+    assert "Showing 1&ndash;10 of" in html and 'aria-current="true">10<' in html and "page=2" in html
+    assert client.cookies.get("hl_per") == "10"
+    all_ = client.get("/logbook?per=all").text
+    n = int(re.search(r"of (\d+) flight", all_).group(1))
+    assert f"Showing 1&ndash;{n} of {n}" in all_ and "page=2" not in all_
+    assert "Showing 1&ndash;" in client.get("/logbook").text  # remembers "all" from the cookie
+    last = client.get("/logbook?per=10&page=999").text  # past the end lands on the last page
+    assert "Showing" in last
+    client.get("/logbook?per=10")
+
+
+def test_progress_certificates(client):
+    import features
+    for k in features.CERT_KEYS:
+        html = client.get(f"/progress?cert={k}").text
+        assert 'aria-current="page">' + dict((a, b) for a, b, *_ in features.CERTS)[k] + "<" in html
+    assert "61.65(d)" in client.get("/progress?cert=instrument").text
+    dash = client.get("/").text
+    assert "Instrument rating progress" in dash, re.findall(r'id="w-prog">[^<]*', dash)  # dashboard follows the last choice
+    c = main.connect()
+    p = features.progress_for(c, "sport")
+    c.close()
+    assert p["tracked"][0][2] == 20 and any("75 nm" in x["label"] for x in p["checks"])
+    client.get("/progress?cert=private")
+
+
+def test_hangar_hub_and_refs(client, monkeypatch):
+    import refs
+    for path in ("/hangar", "/scans", "/data"):
+        html = client.get(path).text
+        assert 'class="hub-tabs"' in html and "FAR" in client.get("/hangar").text
+    xml = (b'<DIV5 N="91" TYPE="PART"><HEAD>PART 91 GENERAL</HEAD><DIV8 N="91.3" TYPE="SECTION">'
+           b'<HEAD>&#167; 91.3 Responsibility.</HEAD><P>(a) The <I>pilot in command</I> is responsible.</P>'
+           b'<P>(1) Sub.</P></DIV8></DIV5>')
+    monkeypatch.setattr(refs, "ecfr_versions", lambda: {14: "2026-10-08", 49: "2026-10-01"})
+    monkeypatch.setattr(refs, "fetch_far", lambda v, pause=0: [(14, 91, "General", xml)])
+    monkeypatch.setattr(refs, "latest_aim_url", lambda: "https://www.faa.gov/x/AIM_Basic_dtd_7-9-26.pdf")
+    monkeypatch.setattr(refs, "download_aim", lambda url, dest, limit=0: dest.write_bytes(b"%PDF-1.4 aim") or 12)
+    st = main.run_refs(force=True)
+    assert not st["error"] and st["far"]["version"] == "2026-10-08" and st["aim"]["label"] == "July 9, 2026"
+    html = client.get("/hangar").text
+    assert "Federal Aviation Regulations (current as of 2026-10-08)" in html and "July 9, 2026" in html
+    pdf = client.get(f"/hangar/{st['far']['doc_id']}/file")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    again = main.run_refs(force=True)  # nothing changed: nothing re-downloaded
+    assert again["far"]["updated"] == st["far"]["updated"]
+    assert main.run_refs() is None  # checked less than a week ago
+    c = main.connect()
+    c.execute("DELETE FROM documents WHERE id=?", (st["aim"]["doc_id"],))
+    c.commit()
+    c.close()
+    st2 = main.run_refs(force=False) or {}
+    assert client.post("/hangar/refs/settings", data={"csrf": token(client)}).status_code == 303
+    c = main.connect()
+    assert not json.loads(core.profile_get(c)["refs"])["auto"]
+    c.close()
 
 
 def test_delete_all_requires_phrase(client):

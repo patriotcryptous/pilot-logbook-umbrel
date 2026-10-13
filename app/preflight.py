@@ -425,3 +425,60 @@ LINKS = [
     ("NOTAM search", "https://notams.aim.faa.gov/notamSearch/"),
     ("Temporary flight restrictions", "https://tfr.faa.gov"),
 ]
+
+
+# ----------------------------------------------------------------------------- one question at a time
+
+# key -> (question, the answer that adds the risk, a short hint)
+QUESTIONS = {
+    "ill": ("Are you feeling ill, or do you have any symptoms?", "y", "IMSAFE: Illness. Even a cold can block your ears in a descent."),
+    "meds": ("Are you taking any medication that could affect you?", "y", "IMSAFE: Medication, including over-the-counter. Ask an AME if you're not sure."),
+    "stress": ("Are you under stress or upset about anything?", "y", "IMSAFE: Stress from work, family or money follows you into the cockpit."),
+    "alcohol": ("Have you had alcohol in the last 8 hours, or do you still feel its effects?", "y", "IMSAFE: Alcohol. FAR 91.17 makes this a no-go."),
+    "fatigue": ("Are you tired, or did you get less than 8 hours of sleep?", "y", "IMSAFE: Fatigue."),
+    "eating": ("Have you skipped a meal, or are you dehydrated?", "y", "IMSAFE: Eating and hydration."),
+    "rusty": ("Has it been more than 30 days since you last flew?", "y", "Recency. Rusty skills show up first in the pattern."),
+    "new_type": ("Do you have less than 10 hours in this aircraft?", "y", "Time in type."),
+    "new_airport": ("Is this your first time at this airport?", "y", "Study the airport diagram, pattern altitude and entry first."),
+    "squawks": ("Does the aircraft have open squawks or inoperative equipment?", "y", "FAR 91.213 decides whether you can fly with it inoperative."),
+    "wb": ("Is weight and balance near the limits, or not worked out yet?", "y", "Work it out with today's fuel and passengers."),
+    "fuel_tight": ("Will you land with less than 1 hour of fuel?", "y", "A common personal minimum is to land with an hour in the tanks."),
+    "fuel_legal": ("Is your fuel short of the trip plus the legal reserve (30 minutes by day, 45 at night)?", "y", "FAR 91.151 makes this a no-go."),
+    "perf": ("Is the takeoff or landing distance more than half the runway?", "y", "Use the POH for today's weight, temperature and wind."),
+    "unfamiliar_avionics": ("Is the avionics or equipment unfamiliar to you?", "y", "A new panel adds workload when you least want it."),
+    "mvfr": ("Is the weather marginal VFR at your departure or destination?", "y", "Ceiling 1,000 to 3,000 ft or visibility 3 to 5 miles."),
+    "ifr": ("Is the weather IFR or worse at your departure or destination?", "y", "Ceiling below 1,000 ft or visibility below 3 miles."),
+    "crosswind": ("Is the crosswind more than 80% of your personal limit?", "y", "Check the runway you'll actually use."),
+    "density_alt": ("Is the density altitude over 5,000 ft?", "y", "Hot, high and humid means longer takeoff rolls and weaker climbs."),
+    "terrain": ("Will you cross mountains, large water or areas with few landing options?", "y", "Plan where you'd go if the engine quit."),
+    "airspace": ("Will you fly in busy or unfamiliar airspace, such as Class B or C, or near a TFR?", "y", "Check NOTAMs and TFRs for the route."),
+    "thunder": ("Are thunderstorms or icing forecast near your route?", "y", "Give storms 20 miles; stay out of visible moisture below freezing."),
+    "passengers": ("Are passengers counting on this trip?", "y", "External pressure: brief them that the flight might not happen."),
+    "schedule": ("Do you have to be somewhere at a set time?", "y", "External pressure."),
+    "get_home": ("Do you need to get back today?", "y", "Get-home-itis is behind many weather accidents."),
+    "no_plan_b": ("Are you without a backup plan if the weather turns, such as an alternate airport, a hotel or a ride home?", "y", "Decide your plan B before you leave."),
+    "pressure": ("Is a checkride, stage check or rental deadline pushing you to go?", "y", "External pressure."),
+}
+
+
+def known_keys(ctx):
+    """Risk items the app can answer from data, so it doesn't ask them."""
+    k = {"night"}
+    if (ctx.get("wx") or {}).get("metar"):
+        k |= {"mvfr", "ifr"}
+    if ctx.get("crosswind") is not None and (ctx.get("mins") or {}).get("crosswind"):
+        k.add("crosswind")
+    if ctx.get("da"):
+        k.add("density_alt")
+    labels = [f["label"] for f in ctx.get("facts", [])]
+    if "Last flight" in labels:
+        k.add("rusty")
+    if any(x.startswith("Time in ") for x in labels):
+        k.add("new_type")
+    if any(x.startswith("Flown at ") for x in labels):
+        k.add("new_airport")
+    if ctx.get("fuel"):
+        k |= {"fuel_legal", "fuel_tight"}
+    if ctx.get("tod") and ctx.get("runway_len"):
+        k.add("perf")
+    return k

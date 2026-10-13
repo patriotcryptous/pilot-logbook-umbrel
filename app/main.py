@@ -2,7 +2,8 @@
 
 No accounts (umbrelOS's app proxy already sits in front), no telemetry. Pages are plain HTML except the
 Airports route map, which runs bundled Leaflet over OpenStreetMap/OpenTopoMap tiles. The server itself only
-reaches out for the Preflight Risk Check weather (aviationweather.gov) and the optional expiry alert. Pages are rendered on the server, charts are inline SVG.
+reaches out for the Preflight Risk Check weather (aviationweather.gov), the weekly FAR/AIM update
+(ecfr.gov, faa.gov) and the optional expiry alert. Pages are rendered on the server, charts are inline SVG.
 """
 import hmac
 import json
@@ -38,6 +39,7 @@ import logbook_core as core
 import mapsvg
 import pdfexport
 import preflight
+import refs
 
 BASE = Path(__file__).parent
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
@@ -52,6 +54,7 @@ MAX_SCAN = 40 * 1024 * 1024
 MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "4096")) * 1024 * 1024   # per upload request, Hangar and restore
 MAX_RESTORE = MAX_UPLOAD
 PAGE_SIZE = 100
+PER_PAGE_CHOICES = ("10", "50", "100", "all")
 MAP_TILE_HOSTS = ["https://tile.openstreetmap.org", "https://*.tile.opentopomap.org"]
 SCAN_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
               ".webp": "image/webp", ".pdf": "application/pdf"}
@@ -146,7 +149,7 @@ NAV = [("dash", "/", "Dashboard", "grid"), ("logbook", "/logbook", "Logbook", "b
        ("training", "/training", "Endorsements", "award"), ("currency", "/currency", "Currency", "clock"),
        ("airports", "/airports", "Airports", "map"), ("costs", "/costs", "Costs", "dollar"),
        ("preflight", "/preflight", "Preflight Risk Check", "shield"),
-       ("hangar", "/hangar", "Document Hangar", "folder"), ("scans", "/scans", "Paper scans", "image"), ("data", "/data", "Import & backup", "database"),
+       ("hangar", "/hangar", "Document Hangar", "folder"),
        ("settings", "/settings", "Settings", "sliders")]
 MORE_KEYS = [k for k, *_ in NAV[4:]] + ["more"]
 
@@ -158,6 +161,8 @@ def nav_key(path):
         return "add"
     if path.startswith("/flights") or path.startswith("/logbook"):
         return "logbook"
+    if path.startswith("/scans") or path.startswith("/data"):
+        return "hangar"  # paper scans and import & backup live inside the Document Hangar
     for key, href, _, _ in NAV[3:]:
         if path.startswith(href):
             return key
@@ -310,7 +315,7 @@ def dashboard(request: Request):
         d = core.dashboard(c, today)
         cur = core.currency(c, today)
         rem = reminders_for(c, prof)
-        prog = core.progress_private_asel(c)
+        prog = features.progress_for(c, cert_of(request), today)
         hsum = hangar.summary(c, DOCS, today)
     rings = []
     for k in cur:
@@ -324,7 +329,7 @@ def dashboard(request: Request):
                                  "days left" if k["night_ok"] else "of 3 landings", "ok" if k["night_ok"] else "idle"),
             "day_ok": k["day_ok"], "night_ok": k["night_ok"],
             "day_through": k["day_through"], "night_through": k["night_through"]})
-    ctx = dict(d=d, t=d["totals"], hsum=hsum, rings=rings, reminders=rem, prog=prog["tracked"][:6], tf=tf,
+    ctx = dict(d=d, t=d["totals"], hsum=hsum, rings=rings, reminders=rem, prog=prog["tracked"][:6], prog_title=prog["label"], tf=tf,
                monthly=charts.monthly_bars(d["months"], tf), cumul=charts.cumulative_line(d["cumulative"], tf),
                heat=charts.heatmap(d["heat"], today, tf), first_name=(prof.get("name") or "").split(" ")[0])
     return render(request, "dashboard.html", **ctx)
@@ -340,7 +345,7 @@ EXTRA_COLS = [("sic", "SIC", "sic"), ("picus", "PICUS", "picus"), ("multi_pilot"
 
 
 @app.get("/logbook")
-def logbook(request: Request, year: str = "", aircraft: str = "", q: str = "", page: int = 1):
+def logbook(request: Request, year: str = "", aircraft: str = "", q: str = "", page: int = 1, per: str = ""):
     where, params = ["1=1"], []
     if re.fullmatch(r"\d{4}", year):
         where.append("substr(date,1,4)=?")
@@ -353,20 +358,30 @@ def logbook(request: Request, year: str = "", aircraft: str = "", q: str = "", p
         params += [f"%{q.strip()}%"] * 3
     w = " AND ".join(where)
     page = max(page, 1)
+    chosen = per if per in PER_PAGE_CHOICES else request.cookies.get("hl_per", "")
+    per = chosen if chosen in PER_PAGE_CHOICES else "10"
+    size = 10 ** 9 if per == "all" else int(per)
     with db() as c:
         prof, enabled, tf = settings_ctx(c)
         total_rows = c.execute(f"SELECT COUNT(*) FROM flights WHERE {w}", params).fetchone()[0]
+        pages = max(1, -(-total_rows // size))
+        page = min(page, pages)
         rows = c.execute(f"SELECT * FROM flights WHERE {w} ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
-                         (*params, PAGE_SIZE, (page - 1) * PAGE_SIZE)).fetchall()
+                         (*params, size, (page - 1) * size)).fetchall()
         sums = core.totals(c, w, params)
         all_sums = core.totals(c)
         years = [r[0] for r in c.execute("SELECT DISTINCT substr(date,1,4) FROM flights ORDER BY 1 DESC")]
         tails = [r[0] for r in c.execute("SELECT DISTINCT aircraft FROM flights WHERE aircraft!='' ORDER BY 1")]
     # Optional columns appear when their field is switched on and your logbook has data in them.
     extra = [(k, h) for k, h, feat in EXTRA_COLS if feat in enabled and all_sums.get(k, 0) > 0]
-    return render(request, "logbook.html", tf=tf, rows=rows, sums=sums, all_sums=all_sums, years=years, tails=tails,
-                  year=year, aircraft=aircraft, q=q, page=page, pages=max(1, -(-total_rows // PAGE_SIZE)),
+    qs = urlencode({k: v for k, v in (("year", year), ("aircraft", aircraft), ("q", q.strip())) if v})
+    resp = render(request, "logbook.html", tf=tf, rows=rows, sums=sums, all_sums=all_sums, years=years, tails=tails,
+                  year=year, aircraft=aircraft, q=q, page=page, pages=pages, per=per, per_choices=PER_PAGE_CHOICES,
+                  qs=qs, first=(page - 1) * size + 1 if rows else 0, last=(page - 1) * size + len(rows),
                   total_rows=total_rows, extra=extra, filtered=bool(year or aircraft or q.strip()))
+    if per != request.cookies.get("hl_per"):
+        resp.set_cookie("hl_per", per, max_age=31536000, samesite="strict")
+    return resp
 
 
 # ----------------------------------------------------------------------------- flight form
@@ -582,13 +597,21 @@ async def remove_flight(request: Request, fid: int):
 
 # ----------------------------------------------------------------------------- progress
 
+def cert_of(request: Request):
+    c = request.cookies.get("hl_cert", "")
+    return c if c in features.CERT_KEYS else "private"
+
+
 @app.get("/progress")
-def progress(request: Request):
+def progress(request: Request, cert: str = ""):
+    cert = cert if cert in features.CERT_KEYS else cert_of(request)
     with db() as c:
         _, _, tf = settings_ctx(c)
-        p = core.progress_private_asel(c)
-        checks = features.specific_requirements(c)
-    return render(request, "progress.html", p=p, checks=checks, tf=tf)
+        p = features.progress_for(c, cert)
+    resp = render(request, "progress.html", p=p, checks=p["checks"], tf=tf, certs=features.CERTS)
+    if cert != request.cookies.get("hl_cert"):
+        resp.set_cookie("hl_cert", cert, max_age=31536000, samesite="strict")
+    return resp
 
 
 # ----------------------------------------------------------------------------- settings
@@ -800,11 +823,18 @@ def hangar_home(request: Request, cat: str = "", q: str = "", aircraft: str = ""
         info = hangar.summary(c, DOCS, today)
         tails = sorted({r[0] for r in c.execute("SELECT ident FROM aircraft")}
                        | {r[0] for r in c.execute("SELECT DISTINCT aircraft FROM documents WHERE aircraft!=''")})
+        rs = refs_state(core.profile_get(c))
+        ref_docs = {}
+        for key in ("far", "aim"):
+            did = (rs.get(key) or {}).get("doc_id")
+            row = c.execute("SELECT id, title, size FROM documents WHERE id=?", (did or 0,)).fetchone()
+            if row:
+                ref_docs[key] = {"id": row["id"], "title": row["title"], "size": hangar.human_size(row["size"])}
     docs = [hangar.decorate(r, DOCS, today) for r in rows]
     filtered = bool(cat or q.strip() or aircraft)
     return render(request, "hangar.html", docs=docs, total=total, counts=counts, cats=hangar.CATEGORIES, attn=attn,
                   info=info, tails=tails, cat=cat, q=q, aircraft=aircraft, sort=sort, page=page,
-                  pages=max(1, -(-total // HANGAR_PER)), filtered=filtered, msg=msg, error=error)
+                  pages=max(1, -(-total // HANGAR_PER)), filtered=filtered, msg=msg, error=error, rs=rs, ref_docs=ref_docs)
 
 
 @app.get("/hangar/add")
@@ -1219,7 +1249,7 @@ async def training_delete(request: Request, eid: int):
 
 
 @app.get("/export/checkride.pdf")
-def export_checkride(images: int = 1):
+def export_checkride(request: Request, images: int = 1):
     today = date.today()
     with db() as c:
         prof, _, tf = settings_ctx(c)
@@ -1230,7 +1260,7 @@ def export_checkride(images: int = 1):
         docs = [hangar.decorate(r, DOCS, today) for r in c.execute(
             "SELECT * FROM documents WHERE category IN ('pilot', 'training', 'aircraft', 'insurance') "
             "ORDER BY category, title COLLATE NOCASE")]
-        pdf = checkride.build(prof, dict(core.progress_private_asel(c), checks=features.specific_requirements(c, today)), core.totals(c), ends, docs, core.currency(c, today),
+        pdf = checkride.build(prof, features.progress_for(c, cert_of(request), today), core.totals(c), ends, docs, core.currency(c, today),
                               reminders_for(c, prof), core.dashboard(c, today)["aircraft"],
                               lambda v: core.fmt_hours(v, tf), DOCS, bool(images), today)
     return Response(pdf, media_type="application/pdf",
@@ -1354,11 +1384,15 @@ def build_preflight(c, q):
         except Exception:  # noqa: BLE001 - a bad time zone name shouldn't break the page
             ctx["sun"] = None
     auto = preflight.auto_risks(ctx)
-    ctx["risk_key"] = code + ("|wx" if ctx["checked_wx"] else "")
-    if q.get("risk_submitted") and q.get("risk_for") == ctx["risk_key"]:
-        checked = {k for k, *_ in preflight.RISK_ITEMS if q.get("r_" + k)}
-    else:
-        checked = set(auto) | {k for k, *_ in preflight.RISK_ITEMS if q.get("r_" + k)}
+    known = preflight.known_keys(ctx)
+    answers = {k: q.get("a_" + k) for k in preflight.QUESTIONS if q.get("a_" + k) in ("y", "n")}
+    checked = {k for k in known if k in auto} | {k for k, a in answers.items()
+                                                 if k not in known and a == preflight.QUESTIONS[k][1]}
+    ctx["answers"], ctx["known"] = answers, known
+    ticks = {k for k in q if k.startswith("cl_")}
+    ctx["ticks"] = ticks
+    ctx["open_items"] = [(title, it) for i, (title, items) in enumerate(preflight.CHECKLISTS)
+                         for j, it in enumerate(items) if f"cl_{i}_{j}" not in ticks]
     ctx.update(auto=auto, checked=checked, risk=preflight.score_risks(checked),
                risk_items=preflight.RISK_ITEMS, risk_groups=preflight.RISK_GROUPS)
     res = ctx.get("result")
@@ -1383,7 +1417,36 @@ def preflight_page(request: Request):
     with db() as c:
         ctx = build_preflight(c, q)
         history = [dict(r) for r in c.execute("SELECT * FROM preflight_checks ORDER BY id DESC LIMIT 8")]
-    return render(request, "preflight.html", history=history, saved=q.get("saved") == "1", **ctx)
+    group_of = {k: g for k, g, _, _ in preflight.RISK_ITEMS}
+    steps = ["flight"] + (["weather"] if ctx["checked_wx"] else [])
+    steps += ["q:" + k for k in preflight.QUESTIONS if k not in ctx["known"]]
+    steps += [f"cl:{i}" for i in range(len(preflight.CHECKLISTS))] + ["result"]
+    at = q.get("at") or "flight"
+    if at not in steps or (at != "flight" and not ctx["checked_wx"]):
+        at = "flight"
+    i = steps.index(at)
+    state = {k: v for k, v in q.items() if k not in ("at", "csrf", "saved") and v not in ("", None)}
+    slide = {"id": at, "index": i, "total": len(steps), "prev": steps[i - 1] if i else None,
+             "next": steps[i + 1] if i + 1 < len(steps) else None}
+    if at.startswith("q:"):
+        key = at[2:]
+        slide.update(kind="question", key=key, text=preflight.QUESTIONS[key][0], hint=preflight.QUESTIONS[key][2],
+                     group=dict((g, t) for g, t, _ in preflight.RISK_GROUPS)[group_of[key]], letter=group_of[key],
+                     points=preflight.RISK_POINTS[key], answer=ctx["answers"].get(key))
+        state.pop("a_" + key, None)
+    elif at.startswith("cl:"):
+        n = int(at[3:])
+        title, items = preflight.CHECKLISTS[n]
+        slide.update(kind="checklist", n=n, title=title, entries=items)
+        for j in range(len(items)):
+            state.pop(f"cl_{n}_{j}", None)
+    else:
+        slide["kind"] = at
+    stage = ("Your flight" if at == "flight" else "Weather" if at == "weather" else
+             slide.get("group") if at.startswith("q:") else "Before you go" if at.startswith("cl:") else "Result")
+    return render(request, "preflight.html", history=history, saved=q.get("saved") == "1", slide=slide, state=state,
+                  stage=stage, back_qs=urlencode({**{k: v for k, v in q.items() if k not in ("at", "saved")}, "at": slide["prev"] or "flight"}),
+                  **ctx)
 
 
 @app.post("/preflight/save")
@@ -1407,7 +1470,7 @@ async def preflight_save(request: Request):
                    summary, json.dumps(details)))
         c.commit()
     keep = {k: v for k, v in q.items() if v}
-    keep["saved"] = "1"
+    keep["saved"], keep["at"] = "1", "result"
     return RedirectResponse("/preflight?" + urlencode(keep), status_code=303)
 
 
@@ -1446,12 +1509,15 @@ async def minimums_save(request: Request):
 
 @app.get("/costs")
 def costs_page(request: Request, saved: int = 0):
+    cert = cert_of(request)
     with db() as c:
         prof, _, tf = settings_ctx(c)
         rates = features.rates_get(prof)
-        prog = core.progress_private_asel(c)["tracked"]
+        pg = features.progress_for(c, cert)
+        prog = pg["tracked"]
         remaining = max([need - have for _, have, need, unit in prog if unit == "hrs"] + [0])
         cs = features.cost_summary(c, rates, remaining_hours=remaining)
+        cs["cert_far"] = pg["far"]
         tails = [r[0] for r in c.execute("SELECT DISTINCT aircraft FROM flights WHERE aircraft!='' "
                                          "UNION SELECT ident FROM aircraft ORDER BY 1")]
     return render(request, "costs.html", cs=cs, t=cs["t"], rates=rates, tails=tails, tf=tf, saved=bool(saved),
@@ -1665,6 +1731,152 @@ async def autobackup_delete(request: Request, name: str):
     return back("/data", msg="Backup deleted.")
 
 
+# ----------------------------------------------------------------------------- FAR/AIM in the Hangar
+
+_refs_lock = threading.Lock()
+
+
+def refs_state(prof):
+    try:
+        st = json.loads(prof.get("refs") or "{}")
+    except ValueError:
+        st = {}
+    st.setdefault("auto", True)
+    return st
+
+
+def _save_refs(st):
+    with db() as c:
+        core.profile_set(c, {"refs": json.dumps(st)})
+
+
+def _aim_label(url):
+    m = re.search(r"dtd_(\d{1,2})-(\d{1,2})-(\d{2})", url)
+    if m:
+        try:
+            return date(2000 + int(m.group(3)), int(m.group(1)), int(m.group(2))).strftime("%B %-d, %Y")
+        except ValueError:
+            pass
+    return Path(url).stem.replace("_", " ")
+
+
+def _put_ref(c, st, key, path, title, notes, original, size):
+    """Point the FAR or AIM Hangar document at a freshly downloaded file, creating it the first time."""
+    item = st.get(key) or {}
+    row = c.execute("SELECT * FROM documents WHERE id=?", (item.get("doc_id") or 0,)).fetchone()
+    if row:
+        old = row["filename"]
+        hangar.update(c, row["id"], title=title, notes=notes, filename=path.name, original_name=original,
+                      mime="application/pdf", size=size, category="reference")
+        if old and old != path.name:
+            (DOCS / old).unlink(missing_ok=True)
+        return row["id"]
+    return hangar.create(c, kind="file", title=title, category="reference", notes=notes, filename=path.name,
+                         original_name=original, mime="application/pdf", size=size)
+
+
+def run_refs(force=False):
+    """Fetch the current FAR and AIM into the Hangar if they changed. Weekly when switched on."""
+    if not _refs_lock.acquire(blocking=False):
+        return None
+    try:
+        with db() as c:
+            st = refs_state(core.profile_get(c))
+        if not force:
+            if not st["auto"]:
+                return None
+            last = st.get("last_check") or ""
+            if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(days=7):
+                return None
+        st["running"], st["error"] = True, ""
+        _save_refs(st)
+        errors = []
+        # FAR
+        try:
+            with db() as c:
+                item = st.get("far") or {}
+                row = c.execute("SELECT filename FROM documents WHERE id=?", (item.get("doc_id") or 0,)).fetchone()
+            removed = bool(item.get("doc_id")) and not row
+            if removed and not force:
+                pass  # the pilot deleted it from the Hangar: don't bring it back on its own
+            else:
+                versions = refs.ecfr_versions()
+                ver = refs.far_version(versions)
+                have = row and (DOCS / row["filename"]).is_file() and item.get("version") == ver
+                if not have:
+                    pdf = refs.build_far_pdf(refs.fetch_far(versions), ver)
+                    path = DOCS / (secrets.token_hex(12) + ".pdf")
+                    path.write_bytes(pdf)
+                    with db() as c:
+                        did = _put_ref(c, st, "far", path,
+                                       f"FAR: Federal Aviation Regulations (current as of {ver})",
+                                       "Parts 1, 43, 61, 67, 68, 73, 91, 103, 107 and 141 of 14 CFR and 49 CFR 830, "
+                                       "from the eCFR. Updated automatically when the FAA's rules change.",
+                                       f"FAR-{ver}.pdf", len(pdf))
+                    st["far"] = {"doc_id": did, "version": ver, "updated": refs.now()}
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"FAR: {str(e)[:120] or type(e).__name__}")
+        # AIM
+        try:
+            with db() as c:
+                item = st.get("aim") or {}
+                row = c.execute("SELECT filename FROM documents WHERE id=?", (item.get("doc_id") or 0,)).fetchone()
+            removed = bool(item.get("doc_id")) and not row
+            if not (removed and not force):
+                url = refs.latest_aim_url()
+                have = row and (DOCS / row["filename"]).is_file() and item.get("version") == url
+                if not have:
+                    need = 250 * 1024 * 1024
+                    if shutil.disk_usage(DATA).free < need:
+                        raise ValueError("not enough free space for the AIM")
+                    path = DOCS / (secrets.token_hex(12) + ".pdf")
+                    try:
+                        size = refs.download_aim(url, path)
+                    except BaseException:
+                        path.unlink(missing_ok=True)
+                        raise
+                    label = _aim_label(url)
+                    with db() as c:
+                        did = _put_ref(c, st, "aim", path, f"AIM: Aeronautical Information Manual ({label})",
+                                       "The FAA's current Aeronautical Information Manual with all changes, from "
+                                       "faa.gov. Updated automatically when a new change is published.",
+                                       Path(url).name, size)
+                    st["aim"] = {"doc_id": did, "version": url, "label": label, "updated": refs.now()}
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"AIM: {str(e)[:120] or type(e).__name__}")
+        st["last_check"] = refs.now()
+        st["error"] = "; ".join(errors)
+        return st
+    finally:
+        st_final = locals().get("st")
+        if st_final is not None:
+            st_final["running"] = False
+            try:
+                _save_refs(st_final)
+            except Exception:  # noqa: BLE001
+                log.exception("couldn't save FAR/AIM status")
+        _refs_lock.release()
+
+
+@app.post("/hangar/refs/update")
+async def refs_update(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    threading.Thread(target=run_refs, kwargs={"force": True}, name="refs", daemon=True).start()
+    return back("/hangar", msg="Checking for the latest FAR and AIM. The AIM is large, so give it a few minutes, then reload.")
+
+
+@app.post("/hangar/refs/settings")
+async def refs_settings(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    with db() as c:
+        st = refs_state(core.profile_get(c))
+        st["auto"] = bool(form.get("auto"))
+        core.profile_set(c, {"refs": json.dumps(st)})
+    return back("/hangar", msg="Saved." if st["auto"] else "Automatic FAR/AIM updates are off.")
+
+
 # ----------------------------------------------------------------------------- background jobs
 
 log = logging.getLogger("pilot-logbook")
@@ -1672,7 +1884,7 @@ _stop = threading.Event()
 
 
 def run_jobs():
-    for job in (run_autobackup, run_alerts):
+    for job in (run_autobackup, run_alerts, run_refs):
         try:
             job()
         except Exception:  # noqa: BLE001 - one failing job must not stop the others

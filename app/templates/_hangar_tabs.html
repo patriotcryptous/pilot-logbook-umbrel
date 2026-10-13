@@ -1,0 +1,7 @@
+{% macro hangar_tabs(active) %}
+<nav class="hub-tabs" aria-label="Document Hangar sections">
+  <a href="/hangar"{% if active == "docs" %} aria-current="page"{% endif %}>{{ icon("folder") }}Documents</a>
+  <a href="/scans"{% if active == "scans" %} aria-current="page"{% endif %}>{{ icon("image") }}Paper logbook scans</a>
+  <a href="/data"{% if active == "data" %} aria-current="page"{% endif %}>{{ icon("database") }}Import &amp; backup</a>
+</nav>
+{% endmacro %}

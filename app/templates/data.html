@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "_hangar_tabs.html" import hangar_tabs with context %}
 {% block title %}Import and backup{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>Import and backup</h1><p class="sub">Your logbook lives only on this server. Keep a copy somewhere else too.</p></div></header>
+<header class="page-head"><div><h1>Document Hangar</h1><p class="sub">Import from ForeFlight, export, and back up everything. Your logbook lives only on this server, so keep a copy somewhere else too.</p></div></header>
+{{ hangar_tabs("data") }}
 {% if msg %}<div class="notice" role="status">{{ msg }}</div>{% endif %}
 {% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
 <div class="two">

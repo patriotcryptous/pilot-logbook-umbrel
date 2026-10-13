@@ -11,7 +11,7 @@
   <div class="cell"><span class="lbl"><i class="dot solo"></i>Instructor</span><span class="val">{{ t.instructor|money }}</span><span class="hint">&nbsp;</span></div>
   <div class="cell"><span class="lbl"><i class="dot fuel"></i>Fuel</span><span class="val">{{ t.fuel|money }}</span><span class="hint">{% if t.fuel_gal %}{{ "%.1f"|format(t.fuel_gal) }} gal{% else %}&nbsp;{% endif %}</span></div>
   <div class="cell"><span class="lbl">Per flight hour</span><span class="val">{{ t.per_hour|money }}</span><span class="hint">{{ t.hours|hrs }} h logged</span></div>
-  <div class="cell"><span class="lbl">To the 61.109 minimums</span><span class="val">{{ cs.projection|money }}</span><span class="hint">{% if cs.remaining_hours %}at least {{ cs.remaining_hours|hrs }} h more{% else %}hour minimums met{% endif %}</span></div>
+  <div class="cell"><span class="lbl">To the {{ cs.cert_far }} minimums</span><span class="val">{{ cs.projection|money }}</span><span class="hint">{% if cs.remaining_hours %}at least {{ cs.remaining_hours|hrs }} h more{% else %}hour minimums met{% endif %}</span></div>
 </section>
 
 {% if t.missing_rate or t.missing_instr %}
@@ -62,7 +62,7 @@
       <td class="n"><b>{{ c.total|money }}</b></td>
       <td class="n"><a class="edit" href="/flights/{{ r.id }}/edit" aria-label="Edit costs for {{ r.date }}">{{ icon("edit") }}</a></td></tr>{% endfor %}</tbody></table>
   </div>
-  <p class="note">Enter fuel, other costs or a different rate on any flight under "Cost and fuel" on its edit page. The 61.109 figure is the most hours still missing from any one requirement on the <a href="/progress">Progress</a> page, priced at your average per hour; most students fly more than the minimums.</p>
+  <p class="note">Enter fuel, other costs or a different rate on any flight under "Cost and fuel" on its edit page. The minimums figure is the most hours still missing from any one requirement on the <a href="/progress">Progress</a> page, priced at your average per hour; most students fly more than the minimums.</p>
 </section>
 {% endif %}
 {% endblock %}

@@ -60,7 +60,7 @@
   </section>
 
   <section class="widget w-progress" aria-labelledby="w-prog">
-    <header><h2 id="w-prog">Private pilot progress</h2><a href="/progress">All requirements</a></header>
+    <header><h2 id="w-prog">{{ prog_title }} {{ "rating" if prog_title == "Instrument" else "pilot" }} progress</h2><a href="/progress">All requirements</a></header>
     {% for label, have, need, unit in prog %}
     <div class="meter{% if have >= need %} done{% endif %}">
       <span>{{ label }}</span>

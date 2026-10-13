@@ -2,7 +2,10 @@
 {% block title %}Progress{% endblock %}
 {% block content %}
 <header class="page-head"><div><h1>Progress</h1>
-  <p class="sub">Your logged flying against the minimum experience for a private pilot certificate, airplane single-engine (FAR 61.109(a)). Your instructor decides when you are ready.</p></div></header>
+  <p class="sub">Your logged flying against the minimum experience for a {{ p.title|lower }} (FAR {{ p.far }}). Your instructor decides when you are ready.</p></div></header>
+<nav class="seg" aria-label="Certificate or rating">
+  {% for k, label, far, title in certs %}<a href="/progress?cert={{ k }}"{% if k == p.cert %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
 <section class="panel">
   <h2>Minimums you can track here</h2>
   {% for label, have, need, unit in p.tracked %}
@@ -12,7 +15,7 @@
     <span class="val">{% if unit == "hrs" %}{{ have|hrs }}{% else %}{{ have|int }}{% endif %} of {{ need }}{% if have >= need %} <b>met</b>{% endif %}</span>
   </div>
   {% endfor %}
-  <p class="note">Cross-country, night and instrument lines estimate from the overlap of the categories you logged on each flight, because a logbook has no separate "dual cross-country" column. Towered landings count the "Towered full-stop landings" you enter on each flight or import from ForeFlight, on flights with solo time. Only flights in a single-engine airplane count, except total time.</p>
+  <p class="note">Cross-country, night and instrument lines estimate from the overlap of the categories you logged on each flight, because a logbook has no separate "dual cross-country" column. {% if p.cert == "private" %}Towered landings count the "Towered full-stop landings" you enter on each flight or import from ForeFlight, on flights with solo time. {% endif %}Lines marked "...of which" are part of the line above. Unless a line says otherwise, only airplane time counts toward airplane requirements.</p>
 </section>
 <section class="panel">
   <h2>Flights that must meet a standard</h2>
@@ -27,12 +30,18 @@
     </li>
     {% endfor %}
   </ul>
-  <p class="note">Enter the total distance in nautical miles on the flight, or list every airport in the Route (for example I67 KBAK KMIE I67) so leg lengths can be worked out. Full-stop landings at three points means at least three airports after takeoff and three full-stop landings.</p>
+  <p class="note">Enter the total distance in nautical miles on the flight, or list every airport in the Route (for example I67 KBAK KMIE I67) so leg lengths can be worked out.{% if p.cert == "private" %} Full-stop landings at three points means at least three airports after takeoff and three full-stop landings.{% endif %}</p>
 </section>
+{% if p.untracked %}
+<section class="panel">
+  <h2>Keep track of these with your instructor</h2>
+  <ul>{% for u in p.untracked %}<li>{{ u }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
 <section class="panel">
   <h2>Checkride packet</h2>
   <p class="hint">One PDF with your hours against these minimums, your endorsements, currency, key documents and a checklist of what to bring.</p>
   <div class="actions"><a class="btn primary" href="/export/checkride.pdf">{{ icon("download") }}Download checkride packet</a><a class="btn" href="/training">Endorsements</a></div>
 </section>
-<p class="note">Based on the regulation text published in the eCFR on September 29, 2026. Requirements can change, and other certificates and ratings have their own minimums.</p>
+<p class="note">Checked against the regulation text in the eCFR, current as of October 8, 2026. Requirements can change, and other certificates and ratings have their own minimums.</p>
 {% endblock %}

@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% from "_hangar_tabs.html" import hangar_tabs with context %}
 {% block title %}Paper scans{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>Paper scans</h1>
+<header class="page-head"><div><h1>Document Hangar</h1>
   <p class="sub">Photograph or scan each page of your paper logbook and file it by date range. A backup of the signed original, kept on your own server.</p></div></header>
+{{ hangar_tabs("scans") }}
 {% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
 <form class="panel" method="post" action="/scans" enctype="multipart/form-data">
   <input type="hidden" name="csrf" value="{{ csrf }}">
