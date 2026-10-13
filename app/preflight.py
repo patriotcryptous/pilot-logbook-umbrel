@@ -409,14 +409,6 @@ CHECKLISTS = [
         "ELT inspection within 12 calendar months and battery in date (91.207)",
         "Airworthiness directives complied with",
     ]),
-    ("Passenger briefing (SAFETY)", [
-        "Seat belts and shoulder harnesses fastened",
-        "Air vents, and where the fire extinguisher is",
-        "Fire extinguisher and first-aid kit",
-        "Exits and emergency procedures",
-        "Traffic: point out what you see, and sterile cockpit during critical phases",
-        "Your questions: ask them now",
-    ]),
 ]
 
 LINKS = [

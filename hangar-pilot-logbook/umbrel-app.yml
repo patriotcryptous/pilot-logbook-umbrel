@@ -2,7 +2,7 @@ manifestVersion: 1
 id: hangar-pilot-logbook
 category: files
 name: Pilot Logbook
-version: "1.5.0"
+version: "1.5.1"
 icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/main/hangar-pilot-logbook/icon.svg
 tagline: Your flight log and logbook backup, kept on your own server
 description: >-
@@ -33,6 +33,6 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  The Preflight Risk Check now goes one step at a time and ends with your PAVE score. The current FAR and AIM are downloaded into the Document Hangar and kept up to date. Paper scans and import and backup move into the Document Hangar. Progress covers sport, private, instrument and commercial. The logbook shows 10, 50, 100 or all flights per page.
+  The passenger briefing checklist is removed from the Preflight Risk Check, since that briefing happens in the airplane.
 submitter: patriotcryptous
 submission: https://github.com/patriotcryptous/pilot-logbook-umbrel
