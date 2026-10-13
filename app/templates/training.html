@@ -9,29 +9,38 @@
 {% if error %}<div class="notice err" role="alert">{{ error }}</div>{% endif %}
 {% if errors %}<div class="errors" role="alert"><strong>Fix these before saving:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
 
+{% if n_superseded or n_archived %}
+<p class="hist-toggle muted small">{% if history %}Showing everything. <a href="/training">Show current endorsements only</a>
+  {% else %}{% if n_superseded %}{{ n_superseded }} superseded{% endif %}{% if n_superseded and n_archived %} and {% endif %}{% if n_archived %}{{ n_archived }} archived{% endif %} endorsement{{ "s" if (n_superseded + n_archived) != 1 }} hidden. <a href="/training?history=1">Show history</a>{% endif %}</p>
+{% endif %}
 {% if rows %}
 <div class="scrollx">
 <table class="tbl endorse">
   <thead><tr><th>Date</th><th>Endorsement</th><th>FAR</th><th>Instructor</th><th>Valid through</th><th>Copy</th><th></th></tr></thead>
   <tbody>
   {% for e in rows %}
-  <tr{% if e.superseded %} class="old"{% endif %}>
+  <tr{% if e.superseded or e.archived %} class="old"{% endif %}>
     <td class="n">{{ e.date|pretty_date }}</td>
     <td><b>{{ e.title }}</b>{% if e.notes %}<div class="muted small">{{ e.notes }}</div>{% endif %}</td>
     <td class="small">{{ e.far_ref or "" }}</td>
     <td>{{ e.cfi_name or "" }}{% if e.cfi_cert %}<div class="muted small">{{ e.cfi_cert }}{% if e.cfi_cert_expires %}, exp. {{ e.cfi_cert_expires|pretty_date }}{% endif %}</div>{% endif %}</td>
-    <td>{% if e.superseded %}<span class="badge ok">Superseded</span>
+    <td>{% if e.archived %}<span class="badge ok">Archived</span>
+      {% elif e.superseded %}<span class="badge ok">Superseded</span>
       {% elif e.expires %}<span class="badge {{ 'expired' if e.state == 'expired' else 'soon' if e.state == 'soon' else 'ok' }}">{% if e.state == "expired" %}Expired {% endif %}{{ e.expires|pretty_date }}</span>
       {% else %}<span class="muted small">No expiry</span>{% endif %}</td>
     <td>{% if e.document_id and doc_titles.get(e.document_id) %}<a href="/hangar/{{ e.document_id }}">{{ doc_titles[e.document_id] }}</a>{% endif %}</td>
-    <td class="n"><a class="edit" href="/training?edit={{ e.id }}#form" aria-label="Edit {{ e.title }}">{{ icon("edit") }}</a></td>
+    <td class="n row-actions">
+      {% if e.archived or e.state == "expired" %}<form method="post" action="/training/{{ e.id }}/archive"><input type="hidden" name="csrf" value="{{ csrf }}">{% if history %}<input type="hidden" name="history" value="1">{% endif %}
+        {% if e.archived %}<input type="hidden" name="restore" value="1"><button class="linkbtn plain-link" type="submit">Restore</button>{% else %}<button class="linkbtn plain-link" type="submit">Archive</button>{% endif %}</form>{% endif %}
+      <a class="edit" href="/training?edit={{ e.id }}#form" aria-label="Edit {{ e.title }}">{{ icon("edit") }}</a></td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
 {% else %}
-<div class="panel empty"><h2>No endorsements yet</h2><p>Add each endorsement your instructor writes in your logbook. Solo endorsements expire after 90 days, and you'll see when.</p></div>
+{% if n_superseded or n_archived %}<div class="panel empty"><h2>No current endorsements</h2><p>Everything is archived or superseded. Use Show history above to see them.</p></div>{% else %}
+<div class="panel empty"><h2>No endorsements yet</h2><p>Add each endorsement your instructor writes in your logbook. Solo endorsements expire after 90 days, and you'll see when.</p></div>{% endif %}
 {% endif %}
 
 <form class="panel spaced-top" id="form" method="post" action="/training">

@@ -1215,18 +1215,34 @@ def training_docs(c):
 
 
 @app.get("/training")
-def training(request: Request, msg: str = "", error: str = "", edit: int = 0):
+def training(request: Request, msg: str = "", error: str = "", edit: int = 0, history: int = 0):
     today = date.today()
     with db() as c:
-        rows = features.endorsements(c, today)
+        all_rows = features.endorsements(c, today)
+        hidden = [r for r in all_rows if r["superseded"] or r["archived"]]
+        rows = all_rows if history else [r for r in all_rows if not (r["superseded"] or r["archived"])]
         docs = training_docs(c)
         last_cfi = c.execute("SELECT cfi_name, cfi_cert, cfi_cert_expires FROM endorsements ORDER BY date DESC, id DESC "
                              "LIMIT 1").fetchone()
     doc_titles = {d["id"]: d["title"] for d in docs}
-    editing = next((r for r in rows if r["id"] == edit), None)
+    editing = next((r for r in all_rows if r["id"] == edit), None)
     f = dict(editing) if editing else {"date": today.isoformat(), **(dict(last_cfi) if last_cfi else {})}
     return render(request, "training.html", rows=rows, docs=docs, doc_titles=doc_titles, kinds=features.ENDORSEMENT_KINDS,
-                  f=f, editing=editing, msg=msg, error=error, errors=[])
+                  f=f, editing=editing, msg=msg, error=error, errors=[], history=bool(history),
+                  n_superseded=sum(1 for r in hidden if r["superseded"] and not r["archived"]),
+                  n_archived=sum(1 for r in hidden if r["archived"]))
+
+
+@app.post("/training/{eid}/archive")
+async def training_archive(request: Request, eid: int):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    val = 0 if form.get("restore") else 1
+    with db() as c:
+        c.execute("UPDATE endorsements SET archived=? WHERE id=?", (val, eid))
+        c.commit()
+    return back("/training", msg="Endorsement archived." if val else "Endorsement restored.",
+                history="1" if form.get("history") else "")
 
 
 @app.post("/training")
@@ -1268,7 +1284,7 @@ def export_checkride(request: Request, images: int = 1):
     today = date.today()
     with db() as c:
         prof, _, tf = settings_ctx(c)
-        ends = features.endorsements(c, today)
+        ends = [e for e in features.endorsements(c, today) if not e["archived"]]
         for e in ends:
             e["doc"] = dict(r) if e["document_id"] and (r := c.execute(
                 "SELECT filename, original_name FROM documents WHERE id=? AND kind='file'", (e["document_id"],)).fetchone()) else None
@@ -1752,11 +1768,11 @@ REPORT_TABS = [("hours", "Hours for IACRA"), ("check", "Logbook check"), ("insur
 
 
 @app.get("/reports")
-def reports_page(request: Request, tab: str = "hours"):
+def reports_page(request: Request, tab: str = "hours", confirmed: int = 0):
     tab = tab if tab in dict(REPORT_TABS) else "hours"
     with db() as c:
         prof, _, tf = settings_ctx(c)
-        ctx = {"tab": tab, "tabs": REPORT_TABS, "tf": tf}
+        ctx = {"tab": tab, "tabs": REPORT_TABS, "tf": tf, "show_confirmed": bool(confirmed)}
         if tab == "hours":
             ctx["h"] = reports.hours_8710(c)
         elif tab == "check":
@@ -1765,6 +1781,27 @@ def reports_page(request: Request, tab: str = "hours"):
             ctx["ins"] = reports.insurance(c)
             ctx["reminders"] = reminders_for(c, prof)
     return render(request, "reports.html", **ctx)
+
+
+@app.post("/reports/check/confirm")
+async def audit_confirm(request: Request):
+    form = await request.form()
+    check_csrf(request, form.get("csrf", ""))
+    kind = (form.get("kind") or "")[:80]
+    try:
+        fid = int(form.get("flight_id") or 0)
+    except ValueError:
+        fid = 0
+    with db() as c:
+        if form.get("undo"):
+            reports.unconfirm(c, fid, kind)
+        elif form.get("all"):
+            for i in reports.audit(c)["issues"]:
+                if i["kind"] == kind:
+                    reports.confirm(c, i["id"] or 0, kind)
+        else:
+            reports.confirm(c, fid, kind)
+    return RedirectResponse("/reports?tab=check" + ("&confirmed=1" if form.get("undo") else ""), status_code=303)
 
 
 @app.get("/export/insurance.pdf")

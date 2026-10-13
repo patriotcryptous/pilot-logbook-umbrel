@@ -564,3 +564,13 @@ details.audit .statuslist li .small { text-align: right; max-width: 70ch; }
 .notice.warnbox { border-color: var(--amber); }
 .change { border-top: 1px solid var(--line); padding: 12px 0; }
 .change .actions form { margin: 0; }
+
+.row-actions { white-space: nowrap; } .row-actions form { display: inline; margin: 0 6px 0 0; }
+.hist-toggle { margin: -6px 0 10px; }
+
+.audit-list li { display: grid; grid-template-columns: minmax(130px, auto) 1fr auto; gap: 6px 14px; align-items: center; }
+.audit-list li form { margin: 0; }
+.audit-list .small { text-align: left !important; }
+details.audit.confirmed { opacity: .85; }
+@media (max-width: 640px) { .audit-list li { grid-template-columns: 1fr auto; } .audit-list li > .small { grid-column: 1 / -1; order: 3; } }
+.all-ok { margin: 10px 0 2px; }

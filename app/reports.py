@@ -1,5 +1,6 @@
 """Reports: the IACRA (Form 8710-1) record of pilot time, a logbook check, and an insurance hours summary.
 Also the ForeFlight changed-flight review used after an import."""
+import hashlib
 import io
 import json
 from datetime import date, datetime, timedelta
@@ -70,8 +71,33 @@ def _solo_windows(db):
     return [(r[0], r[1] or "9999-12-31") for r in rows]
 
 
+def row_hash(r):
+    """Fingerprint of a flight's values, so a confirmed finding comes back if the flight is edited."""
+    if r is None:
+        return "global"
+    blob = "\x1f".join(f"{f['key']}={r[f['key']]}" for f in core.FIELDS)
+    return hashlib.sha256(blob.encode()).hexdigest()[:20]
+
+
+def confirm(db, flight_id, kind):
+    r = db.execute("SELECT * FROM flights WHERE id=?", (flight_id,)).fetchone() if flight_id else None
+    if flight_id and not r:
+        return False
+    db.execute("INSERT INTO audit_ok(flight_id, kind, row_hash, created_at) VALUES (?,?,?,?) "
+               "ON CONFLICT(flight_id, kind) DO UPDATE SET row_hash=excluded.row_hash, created_at=excluded.created_at",
+               (flight_id or 0, kind, row_hash(r), datetime.now().isoformat(timespec="seconds")))
+    db.commit()
+    return True
+
+
+def unconfirm(db, flight_id, kind):
+    db.execute("DELETE FROM audit_ok WHERE flight_id=? AND kind=?", (flight_id or 0, kind))
+    db.commit()
+
+
 def audit(db, today=None):
-    """Things in the logbook an examiner or insurer would question, worst first."""
+    """Things in the logbook an examiner or insurer would question, worst first.
+    Findings the pilot marked as correct are set aside, unless the flight has changed since."""
     today = today or date.today()
     issues = []
 
@@ -134,13 +160,24 @@ def audit(db, today=None):
         issues.append({"severity": "info", "kind": "No solo endorsements", "id": None, "date": "", "aircraft": "",
                        "text": "You have solo flights but no solo endorsements recorded. Add them on the Endorsements page "
                                "so solo dates can be checked."})
+    ok = {(r["flight_id"], r["kind"]): r["row_hash"] for r in db.execute("SELECT * FROM audit_ok")}
+    by_id = {r["id"]: r for r in rows}
+    confirmed, active = [], []
+    for i in issues:
+        key = (i["id"] or 0, i["kind"])
+        if key in ok and ok[key] == row_hash(by_id.get(i["id"]) if i["id"] else None):
+            confirmed.append(i)
+        else:
+            active.append(i)
+    issues = active
     order = {"error": 0, "warning": 1, "info": 2}
     issues.sort(key=lambda i: (order[i["severity"]], i["kind"], i["date"]))
     groups = {}
     for i in issues:
         groups.setdefault((i["severity"], i["kind"]), []).append(i)
     return {"issues": issues, "groups": [{"severity": s, "kind": k, "entries": v} for (s, k), v in groups.items()],
-            "counts": {s: sum(1 for i in issues if i["severity"] == s) for s in order}, "flights": len(rows)}
+            "counts": {s: sum(1 for i in issues if i["severity"] == s) for s in order}, "flights": len(rows),
+            "confirmed": sorted(confirmed, key=lambda i: i["date"], reverse=True)}
 
 
 # ----------------------------------------------------------------------------- insurance summary
@@ -250,6 +287,10 @@ def insurance_pdf(data, prof, reminders, fmt):
 # ----------------------------------------------------------------------------- ForeFlight changes
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS audit_ok (          -- logbook-check findings the pilot confirmed are correct
+    id INTEGER PRIMARY KEY, flight_id INTEGER NOT NULL, kind TEXT NOT NULL, row_hash TEXT, created_at TEXT,
+    UNIQUE(flight_id, kind)
+);
 CREATE TABLE IF NOT EXISTS flight_changes (    -- an imported flight that looks like an edited copy of an older one
     id INTEGER PRIMARY KEY, new_id INTEGER, old_id INTEGER, import_id INTEGER, created_at TEXT
 );

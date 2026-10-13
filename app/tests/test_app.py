@@ -594,7 +594,9 @@ def test_endorsements_and_checkride_packet(client):
     assert "Jane Doe" in page and "<script>x" not in page and "badge soon" in page
     # a newer solo endorsement supersedes the old one
     client.post("/training", data={"csrf": token(client), "kind": "solo", "date": date.today().isoformat()})
-    assert "Superseded" in client.get("/training").text
+    current = client.get("/training").text
+    assert "Superseded" not in current and "1 superseded endorsement hidden" in current
+    assert "Superseded" in client.get("/training?history=1").text
     # practical test: valid through the end of the second calendar month
     client.post("/training", data={"csrf": token(client), "kind": "practical_test", "date": "2026-08-15"})
     c = main.connect()
@@ -605,7 +607,19 @@ def test_endorsements_and_checkride_packet(client):
     assert client.post("/training", data={"kind": "solo", "date": when}).status_code == 403
     edit = client.post("/training", data={"csrf": token(client), "id": e["id"], "kind": "solo", "date": when,
                                            "title": "Solo, renamed", "expires": "2030-01-01"})
-    assert edit.status_code == 303 and "Solo, renamed" in client.get("/training").text
+    assert edit.status_code == 303 and "Solo, renamed" in client.get("/training?history=1").text
+    # an expired endorsement can be archived, hidden, and restored
+    client.post("/training", data={"csrf": token(client), "kind": "class_b", "date": "2025-01-01", "title": "Old Class B"})
+    c = main.connect()
+    old = c.execute("SELECT id FROM endorsements WHERE title='Old Class B'").fetchone()[0]
+    c.close()
+    assert "Archive</button>" in client.get("/training").text
+    assert client.post(f"/training/{old}/archive", data={"csrf": token(client)}).status_code == 303
+    assert "Old Class B" not in client.get("/training").text and "archived" in client.get("/training").text
+    assert "Old Class B" in client.get("/training?history=1").text
+    client.post(f"/training/{old}/archive", data={"csrf": token(client), "restore": "1"})
+    assert "Old Class B" in client.get("/training").text
+    client.post(f"/training/{old}/archive", data={"csrf": token(client)})
     pdf = client.get("/export/checkride.pdf")
     assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and len(pdf.content) > 3000
     assert client.post(f"/training/{e['id']}/delete", data={"csrf": token(client)}).status_code == 303
@@ -957,6 +971,22 @@ def test_reports_hours_check_and_insurance(client):
     page = client.get("/reports?tab=check").text
     assert "More than total time" in page and "to fix" in page
     assert "logbook check found" in client.get("/").text
+    # mark a finding as correct: it drops out, and comes back if the flight changes
+    fid = c.execute("SELECT id FROM flights WHERE fingerprint='manual:audit1'").fetchone()[0]
+    r = client.post("/reports/check/confirm", data={"csrf": token(client), "flight_id": fid, "kind": "More than total time"})
+    assert r.status_code == 303
+    a2 = reports.audit(c)
+    assert not any(i["id"] == fid and i["kind"] == "More than total time" for i in a2["issues"])
+    assert any(i["id"] == fid for i in a2["confirmed"]) and "you marked as correct" in client.get("/reports?tab=check").text
+    c.execute("UPDATE flights SET pic=1.6 WHERE id=?", (fid,))
+    c.commit()
+    assert any(i["id"] == fid and i["kind"] == "More than total time" for i in reports.audit(c)["issues"])
+    client.post("/reports/check/confirm", data={"csrf": token(client), "flight_id": fid, "kind": "More than total time"})
+    client.post("/reports/check/confirm", data={"csrf": token(client), "flight_id": fid, "kind": "More than total time", "undo": "1"})
+    assert any(i["id"] == fid and i["kind"] == "More than total time" for i in reports.audit(c)["issues"])
+    assert client.post("/reports/check/confirm", data={"flight_id": fid, "kind": "x"}).status_code == 403
+    client.post("/reports/check/confirm", data={"csrf": token(client), "kind": "No instructor name", "all": "1"})
+    assert not any(i["kind"] == "No instructor name" for i in reports.audit(c)["issues"])
     c.execute("DELETE FROM flights WHERE fingerprint='manual:audit1'")
     c.commit()
     ins = reports.insurance(c)

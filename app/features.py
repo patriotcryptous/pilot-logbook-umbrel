@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS alerts_sent (      -- so each reminder goes out once 
 
 def ensure_schema(db):
     db.executescript(SCHEMA)
+    if "archived" not in {r[1] for r in db.execute("PRAGMA table_info(endorsements)")}:
+        db.execute("ALTER TABLE endorsements ADD COLUMN archived INTEGER DEFAULT 0")
     db.commit()
 
 
@@ -111,6 +113,7 @@ def endorsements(db, today=None):
         r["kind_label"] = ENDORSEMENT_BY_KEY.get(r["kind"], ("Other",))[0]
         r["superseded"] = r["kind"] in seen and r["kind"] not in ("other", "solo_xc_flight")
         seen.add(r["kind"])
+        r["archived"] = bool(r.get("archived"))
         if r["expires"]:
             days = (_d(r["expires"]) - today).days
             r["state"] = "expired" if days < 0 else "soon" if days <= 30 else "ok"
@@ -554,6 +557,8 @@ def expiring_items(db, prof, today=None):
         if valid_date(r["expires"]):
             items.append((f"doc{r['id']}", r["title"], _d(r["expires"])))
     for r in endorsements(db, today):
+        if r["archived"]:
+            continue
         if r["expires"] and not r["superseded"] and valid_date(r["expires"]):
             items.append((f"end{r['id']}", r["title"], _d(r["expires"])))
         if r["cfi_cert_expires"] and not r["superseded"] and valid_date(r["cfi_cert_expires"]):
