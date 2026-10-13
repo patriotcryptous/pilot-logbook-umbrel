@@ -1,0 +1,91 @@
+manifestVersion: 1
+id: hangar-owner-log
+category: files
+name: Owner Log
+version: "1.0.0"
+tagline: Keep your aircraft's maintenance, compliance and costs on your own server
+description: >-
+  Owner Log is the record keeper for an aircraft owner. One page answers whether
+  the aircraft is legal and safe to fly today; the rest keeps the evidence.
+
+
+  Inspections and recurring maintenance are tracked on hours, calendar months, or
+  both, counted on the tach, Hobbs or airframe time. Signing an item off writes a
+  logbook entry, moves the due date and records what it cost. Squawks carry a
+  severity and a grounding flag, and resolving one writes the repair into the
+  logbook. Airworthiness directives and service bulletins are tracked with
+  recurring intervals, method of compliance and links to the proof.
+
+
+  It also answers the question owners actually argue about: what does an hour
+  really cost? Variable spending per hour, fixed costs spread over the hours you
+  expect to fly, and money set aside each hour for the overhaul.
+
+
+  Features:
+
+
+  - Status page with overdue airworthiness items, open directives, grounding
+    squawks, times, hours and cost per hour
+
+  - Maintenance items on hour and calendar intervals, with an airworthiness flag
+    and one-click sign-off
+
+  - Squawks with severity, photos, grounding flag and open, in progress, deferred
+    or resolved states
+
+  - AD, service bulletin, safety directive and notice tracking, with recurring
+    intervals and compliance proof
+
+  - VOR checks with the 30-day IFR window
+
+  - Equipment and STCs with serial numbers, install times and time in service
+    against TBO
+
+  - Flights with tach and Hobbs readings that roll the aircraft times forward
+
+  - Costs split into fixed and variable, with receipts, tax-deductible flags and
+    co-owner shares
+
+  - Overhaul reserves that accrue per flight hour, with balances and targets
+
+  - Maintenance logbook with who did the work and their certificate number
+
+  - Document storage for the airworthiness certificate, registration, weight and
+    balance, POH, insurance and 337s
+
+  - An annual inspection packet PDF, an AD and SB compliance report, and a cost
+    of ownership report
+
+  - CSV, JSON and full backup exports, and CSV import for flights and directives
+
+
+  It keeps your own records; it does not replace the aircraft's permanent
+  logbooks, and nothing it prints is a maintenance release. Nothing in this app
+  contacts the internet.
+developer: Wyley Gump
+website: https://github.com/patriotcryptous/owner-log-umbrel
+dependencies: []
+repo: https://github.com/patriotcryptous/owner-log-umbrel
+support: https://github.com/patriotcryptous/owner-log-umbrel/issues
+port: 8232
+icon: https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-owner-log/icon.svg
+gallery:
+  - https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-owner-log/1.jpg
+  - https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-owner-log/2.jpg
+  - https://raw.githubusercontent.com/patriotcryptous/pilot-logbook-umbrel/HEAD/hangar-owner-log/3.jpg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: Wyley Gump
+submission: https://github.com/patriotcryptous/owner-log-umbrel
+releaseNotes: >-
+  First release.
+
+
+  Airworthiness status, maintenance items on hour and calendar intervals,
+  squawks, AD and SB compliance, VOR checks, equipment with time in service,
+  flights that roll the times forward, costs with fixed and variable split,
+  hourly rate projection, overhaul reserves, a maintenance logbook, document
+  storage, three PDF reports, CSV and JSON exports, backup and restore, and CSV
+  import for flights and directives.
